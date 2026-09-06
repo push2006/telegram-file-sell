@@ -1,4 +1,5 @@
 import base64
+import os
 import re
 import asyncio
 from pyrogram import filters, Client
@@ -7,6 +8,33 @@ from pyrogram.enums import ChatMemberStatus
 from pyrogram.errors import UserNotParticipant, Forbidden, PeerIdInvalid, ChatAdminRequired, FloodWait
 from datetime import datetime, timedelta
 from pyrogram import errors
+
+
+def resolve_photo(value: str):
+    """
+    Safely resolve a saved START_PHOTO/FSUB_PHOTO value.
+
+    Older versions of this bot downloaded admin-sent photos to a local file
+    (e.g. "downloads/photo_123.jpg") and stored that path. On hosts with
+    ephemeral disk (Render, etc.) that file disappears on every redeploy,
+    which used to make reply_photo() throw and break the start/fsub flow.
+
+    Current versions store either a URL or a Telegram file_id (both valid,
+    permanent, no disk dependency) — so this only ever needs to filter out
+    the old-style stale local path case.
+
+    Returns the value unchanged if it's safe to use (URL, file_id, or an
+    existing local file), otherwise None so the caller can skip sending
+    a photo instead of crashing.
+    """
+    if not value:
+        return None
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    if os.sep in value or "/" in value:
+        # Looks like a local path — only trust it if the file is actually there.
+        return value if os.path.isfile(value) else None
+    return value  # treat as a Telegram file_id
 
 #===============================================================#
 
@@ -356,7 +384,7 @@ def force_sub(func):
     async def wrapper(client: Client, message: Message):
         if not client.fsub_dict:
             return await func(client, message)
-        photo = client.messages.get('FSUB_PHOTO', '')
+        photo = resolve_photo(client.messages.get('FSUB_PHOTO', ''))
         if photo:
             msg = await message.reply_photo(
                 caption="<b>ᴡᴀɪᴛ ᴀ sᴇᴄᴏɴᴅ.....</b>", 

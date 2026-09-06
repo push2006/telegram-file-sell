@@ -886,6 +886,76 @@ class MongoDB:
             counts["categories"] = (await self.categories.delete_many({})).deleted_count
         return counts
 
+    async def db_storage_stats(self) -> dict:
+        """Document counts per collection, for a quick health check from Telegram."""
+        collections = {
+            "users": self.user_data,
+            "channels": self.channel_data,
+            "premium_users": self.premium_users,
+            "categories": self.categories,
+            "coupons": self.coupons,
+            "category_access": self.category_access,
+            "orders": self.orders,
+        }
+        counts = {}
+        for name, coll in collections.items():
+            counts[name] = await coll.count_documents({})
+
+        try:
+            stats = await self.db.command("dbstats")
+            counts["_total_size_bytes"] = int(stats.get("dataSize", 0))
+            counts["_storage_size_bytes"] = int(stats.get("storageSize", 0))
+        except Exception:
+            pass
+        return counts
+
+    async def clean_junk_data(self, pending_order_hours: int = 24) -> dict:
+        """
+        Remove data that serves no purpose any more, without touching real
+        sales history or active access:
+          - orders stuck in 'pending' older than `pending_order_hours`
+            (abandoned checkouts that were never paid)
+          - category_access records whose expiry_date has already passed
+            (the access is dead anyway; get_category_access already filters
+            these out at read time, so deleting them is purely cleanup)
+          - orders/category_access rows that point at a category_id which
+            no longer exists (leftover from a deleted category)
+        Never touches: paid orders, users, premium users, coupons, active
+        category access, or category documents themselves.
+        """
+        cutoff = datetime.now() - timedelta(hours=pending_order_hours)
+        counts = {}
+
+        counts["stale_pending_orders"] = (await self.orders.delete_many({
+            "status": "pending",
+            "$or": [
+                {"created_at": {"$lt": cutoff}},
+                {"created_at": {"$exists": False}},
+            ],
+        })).deleted_count
+
+        counts["expired_category_access"] = (await self.category_access.delete_many({
+            "expiry_date": {"$ne": None, "$lt": datetime.now()}
+        })).deleted_count
+
+        valid_ids = {str(c["_id"]) async for c in self.categories.find({}, {"_id": 1})}
+
+        orphaned_orders = 0
+        async for o in self.orders.find({}, {"_id": 1, "category_id": 1}):
+            if str(o.get("category_id")) not in valid_ids:
+                await self.orders.delete_one({"_id": o["_id"]})
+                orphaned_orders += 1
+        counts["orphaned_orders"] = orphaned_orders
+
+        orphaned_access = 0
+        async for a in self.category_access.find({}, {"_id": 1, "category_id": 1}):
+            if str(a.get("category_id")) not in valid_ids:
+                await self.category_access.delete_one({"_id": a["_id"]})
+                orphaned_access += 1
+        counts["orphaned_category_access"] = orphaned_access
+
+        return counts
+
     # ---------------- Shop: per-item content, channel-linked access, free trials ----------------
 
     async def add_category_content_item(self, category_id, chat_id: int, message_id: int,
