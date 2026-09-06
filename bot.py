@@ -165,12 +165,18 @@ class Bot(Client):
         
         self.username = usr_bot_me.username
 
-        # Background sweep: kick users from linked shop access channels
-        # whose timed access has expired. See plugins/shop.py.
+        # Background jobs: channel expiry kicks + Mongo/Render auto-clean
         import asyncio
+        import os
         from plugins.shop import kick_expired_channel_members
+        try:
+            from config import AUTO_CLEAN_HOURS, AUTO_CLEAN_PENDING_HOURS
+        except Exception:
+            AUTO_CLEAN_HOURS = int(os.environ.get("AUTO_CLEAN_HOURS", "60"))
+            AUTO_CLEAN_PENDING_HOURS = int(os.environ.get("AUTO_CLEAN_PENDING_HOURS", "60"))
 
         async def _expiry_loop():
+            # Every 10 minutes: kick expired channel members
             while True:
                 try:
                     n = await kick_expired_channel_members(self)
@@ -180,11 +186,55 @@ class Bot(Client):
                     self.LOGGER(__name__, self.name).exception("expiry loop error")
                 await asyncio.sleep(600)
 
+        async def _auto_clean_loop():
+            # Every AUTO_CLEAN_HOURS (default 60): free Mongo junk + tiny Render disk cleanup
+            interval = max(1, int(AUTO_CLEAN_HOURS)) * 3600
+            pending_h = max(1, int(AUTO_CLEAN_PENDING_HOURS))
+            # small delay after boot so DB is ready
+            await asyncio.sleep(120)
+            while True:
+                try:
+                    counts = await self.mongodb.clean_junk_data(pending_order_hours=pending_h)
+                    try:
+                        await self.mongodb.cleanup_database()
+                    except Exception:
+                        pass
+                    # Drop membership rows already kicked (space saver)
+                    try:
+                        r = await self.mongodb.db["channel_memberships"].delete_many({"kicked": True})
+                        counts["kicked_memberships_removed"] = r.deleted_count
+                    except Exception:
+                        counts["kicked_memberships_removed"] = 0
+                    # Render ephemeral disk: trim local log if it grew huge
+                    try:
+                        log_path = "bot.log"
+                        if os.path.exists(log_path) and os.path.getsize(log_path) > 5 * 1024 * 1024:
+                            open(log_path, "w").close()
+                            self.LOGGER(__name__, self.name).info("Truncated bot.log (>5MB)")
+                    except Exception:
+                        pass
+                    self.LOGGER(__name__, self.name).info(
+                        f"Auto-clean done (every {AUTO_CLEAN_HOURS}h, pending>{pending_h}h): {counts}"
+                    )
+                    try:
+                        await self.send_message(
+                            self.owner,
+                            "<b>Auto-clean finished</b>\n" + "\n".join(f"• {k}: <b>{v}</b>" for k, v in counts.items()),
+                        )
+                    except Exception:
+                        pass
+                except Exception:
+                    self.LOGGER(__name__, self.name).exception("auto-clean loop error")
+                await asyncio.sleep(interval)
+
         self.expiry_task = asyncio.create_task(_expiry_loop())
+        self.auto_clean_task = asyncio.create_task(_auto_clean_loop())
 
     async def stop(self, *args):
-        if getattr(self, "expiry_task", None):
-            self.expiry_task.cancel()
+        for name in ("expiry_task", "auto_clean_task"):
+            task = getattr(self, name, None)
+            if task:
+                task.cancel()
         await super().stop()
         self.LOGGER(__name__, self.name).info("Bot stopped.")
 

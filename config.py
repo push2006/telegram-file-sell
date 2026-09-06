@@ -42,6 +42,10 @@ TOKEN = os.environ["TOKEN"]
 API_ID = os.environ["API_ID"]
 API_HASH = os.environ["API_HASH"]
 WORKERS = int(os.environ.get("WORKERS", "5"))
+# Auto Mongo junk cleanup interval (hours). Default 60.
+AUTO_CLEAN_HOURS = int(os.environ.get("AUTO_CLEAN_HOURS", "60"))
+# Pending orders older than this many hours are deleted on each cleanup.
+AUTO_CLEAN_PENDING_HOURS = int(os.environ.get("AUTO_CLEAN_PENDING_HOURS", "60"))
 
 DB_URI = os.environ["DB_URI"]
 DB_NAME = os.environ.get("DB_NAME", "yato")
@@ -49,7 +53,7 @@ DB_NAME = os.environ.get("DB_NAME", "yato")
 
 FSUBS = [[-1003891702450, True, 10]] # Force Subscription Channels [channel_id, request_enabled, timer_in_minutes]
 # Database Channel (Primary)
-DB_CHANNEL =  -1003891702450  # just put channel id dont add 
+DB_CHANNEL = int(os.environ.get("DB_CHANNEL", "-1003891702450"))  # file-store channel; catalog uses /linkchannel 
 # Multiple Database Channels (can be set via bot settings)
 DB_CHANNELS = {
  "-1003891702450": {"name": "Primary DB", "is_primary": True, "is_active": True},
