@@ -408,32 +408,10 @@ async def create_coupon(client: Client, message: Message):
 # Card works via your Stripe / Razorpay / PayLink URL (/setpay card https://...).
 
 PAYMENT_METHODS = {
-    # Cards & payment links
-    "card":   {"label": "💳 Card / Stripe / Razorpay link"},
-    "paytm":  {"label": "📱 Paytm"},
-    "razor":  {"label": "🇮🇳 Razorpay link"},
-    # India
-    "upi":    {"label": "🇮🇳 UPI / GPay / PhonePe"},
-    "bank":   {"label": "🏦 Bank transfer"},
-    # Global wallets
-    "paypal": {"label": "💙 PayPal"},
-    "wise":   {"label": "🌍 Wise"},
-    "revolut":{"label": "💸 Revolut"},
-    "skrill": {"label": "💜 Skrill"},
-    "neteller":{"label": "💚 Neteller"},
-    "cashapp":{"label": "💵 Cash App"},
-    "venmo":  {"label": "💙 Venmo"},
-    "zelle":  {"label": "⚡ Zelle"},
-    # Crypto
+    # Crypto — only method kept here. Telegram Stars is added dynamically by
+    # plugins/stars_payment.py (kept separate so its callback routing doesn't
+    # collide with the generic cat_buy_<method>_ handler below).
     "crypto": {"label": "🪙 USDT / crypto wallet"},
-    "binance":{"label": "🟡 Binance Pay"},
-    "btc":    {"label": "₿ Bitcoin"},
-    "eth":    {"label": "Ξ Ethereum"},
-    # Asia
-    "alipay": {"label": "🔵 Alipay"},
-    "wechat": {"label": "💬 WeChat Pay"},
-    # Fallback
-    "other":  {"label": "💸 Other / custom"},
 }
 
 # short keys only — callback_data must stay under 64 bytes
@@ -461,6 +439,10 @@ async def _enabled_methods(client: Client) -> list:
     """Only show methods the admin has configured (plus crypto if legacy wallet exists)."""
     enabled = []
     for mid in PAYMENT_METHODS:
+        if mid == "stars":
+            # Stars needs no admin-configured text/wallet — it's always offered.
+            enabled.append(mid)
+            continue
         if mid == "crypto":
             val = await client.mongodb.get_bot_setting("pay_crypto", "") \
                 or await client.mongodb.get_bot_setting("crypto_wallet", "")
@@ -484,15 +466,22 @@ async def pay_menu(client: Client, cq: CallbackQuery):
         return await cq.message.edit_text(
             "⚠️ No payment methods configured yet.\n\n"
             "Admin must run e.g.:\n"
-            "<code>/setpay upi name@oksbi</code>\n"
-            "<code>/setpay card https://buy.stripe.com/...</code>\n"
             "<code>/setpay crypto TXwallet USDT TRC20</code>\n"
-            "<code>/setpay paypal https://paypal.me/you</code>\n\n"
+            "<code>/setstarprice CATEGORY_ID 150</code>\n\n"
             "See all options: /setpay",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("« Back", callback_data=f"cat_view_{category_id}")]
             ]),
         )
+
+    if len(methods) == 1:
+        # Only one method configured — skip the chooser and go straight to it.
+        only = methods[0]
+        cq.data = f"cat_buy_{only}_{category_id}"
+        if only == "stars":
+            from plugins.stars_payment import buy_with_stars
+            return await buy_with_stars(client, cq)
+        return await buy_with_method(client, cq)
 
     buttons = []
     row = []
@@ -574,22 +563,11 @@ async def set_payment_details(client: Client, message: Message):
             "<b>Set payment details</b>",
             "Only methods you set appear to users.\n",
             "<b>Examples:</b>",
-            "<code>/setpay card https://buy.stripe.com/xxxx</code>",
-            "<code>/setpay razor https://rzp.io/xxxx</code>",
-            "<code>/setpay upi name@oksbi</code>",
-            "<code>/setpay bank A/C 123 · IFSC SBIN0 · Name You</code>",
-            "<code>/setpay paypal https://paypal.me/you</code>",
-            "<code>/setpay wise email@you.com</code>",
             "<code>/setpay crypto TXwallet USDT TRC20</code>",
-            "<code>/setpay binance Pay ID 123456789</code>",
-            "<code>/setpay btc bc1q...</code>",
-            "<code>/setpay eth 0x...</code>",
-            "<code>/setpay paytm 9876543210</code>",
-            "<code>/setpay cashapp $yourcashtag</code>",
-            "<code>/setpay other Any instructions…</code>",
             "\n<b>All method keys:</b>",
-            ", ".join(PAYMENT_METHODS.keys()),
-            "\nClear one: <code>/setpay upi -</code>",
+            ", ".join(PAYMENT_METHODS.keys()) + ", stars",
+            "\nStars pricing isn't set here — use <code>/setstarprice CATEGORY_ID STARS</code>.",
+            "\nClear one: <code>/setpay crypto -</code>",
             "List saved: /payinfo",
         ]
         return await message.reply_text("\n".join(lines))
