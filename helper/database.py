@@ -770,6 +770,27 @@ class MongoDB:
         query = {"active": True} if active_only else {}
         return await self.categories.find(query).to_list(length=None)
 
+    async def delete_category(self, category_id, hard: bool = False) -> bool:
+        """Remove a category. Soft-delete (default) just flips active=False so it
+        disappears from /shop and list_categories(), without touching any orders,
+        coupons, or access grants that reference it. hard=True actually removes
+        the document from the categories collection."""
+        from bson import ObjectId
+        try:
+            oid = ObjectId(category_id)
+        except Exception:
+            return False
+
+        if hard:
+            res = await self.categories.delete_one({"_id": oid})
+            return res.deleted_count > 0
+
+        res = await self.categories.update_one(
+            {"_id": oid},
+            {"$set": {"active": False}}
+        )
+        return res.matched_count > 0
+
     async def set_category_price(self, category_id, price_cents: int):
         from bson import ObjectId
         await self.categories.update_one(
