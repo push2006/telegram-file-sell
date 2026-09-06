@@ -268,7 +268,7 @@ async def start_command(client: Client, message: Message):
 
     # 9. Normal start — just the photo + catalog, no gate, no extra screens
     else:
-        photo = client.messages.get("START_PHOTO", "")
+        photo = resolve_photo(client.messages.get("START_PHOTO", ""))
         await _send_catalog(client, message.chat.id, photo=photo if photo else None)
         return
 

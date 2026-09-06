@@ -625,6 +625,53 @@ async def pay_info(client: Client, message: Message):
     await message.reply_text("\n".join(lines))
 
 
+@Client.on_message(filters.command("dbstats") & filters.private)
+async def db_stats_cmd(client: Client, message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.reply_text("Only admins can use this command.")
+
+    counts = await client.mongodb.db_storage_stats()
+    lines = ["<b>📊 MongoDB usage</b>\n"]
+    for name in ("users", "channels", "premium_users", "categories", "coupons", "category_access", "orders"):
+        lines.append(f"• {name}: <b>{counts.get(name, 0)}</b> docs")
+
+    if "_total_size_bytes" in counts:
+        mb = counts["_total_size_bytes"] / (1024 * 1024)
+        storage_mb = counts["_storage_size_bytes"] / (1024 * 1024)
+        lines.append(f"\nData size: <b>{mb:.2f} MB</b> (storage on disk: {storage_mb:.2f} MB)")
+
+    lines.append("\nRun <code>/dbcleanup</code> to clear junk (stale/expired/orphaned records).")
+    await message.reply_text("\n".join(lines))
+
+
+@Client.on_message(filters.command("dbcleanup") & filters.private)
+async def db_cleanup_cmd(client: Client, message: Message):
+    """
+    Admin: safely remove junk from MongoDB without touching real data.
+    Deletes:
+      - abandoned 'pending' orders older than 24h (never paid)
+      - category_access rows whose access has already expired
+      - orders/category_access rows pointing at a category that was deleted
+    Leaves untouched: users, paid orders, active access, coupons, categories.
+    """
+    if not is_admin(message.from_user.id):
+        return await message.reply_text("Only admins can use this command.")
+
+    hours = 24
+    if len(message.command) > 1:
+        try:
+            hours = int(message.command[1])
+        except ValueError:
+            return await message.reply_text("<b>Usage:</b> /dbcleanup [pending_hours]\nDefault: 24")
+
+    counts = await client.mongodb.clean_junk_data(pending_order_hours=hours)
+    lines = ["<b>🧹 Junk cleanup done</b>\n"]
+    for k, v in counts.items():
+        lines.append(f"• {k.replace('_', ' ')}: <b>{v}</b>")
+    lines.append(f"\n(Pending orders older than {hours}h were removed. Paid orders and active access were kept.)")
+    await message.reply_text("\n".join(lines))
+
+
 @Client.on_message(filters.command("cleardata") & filters.private)
 async def clear_shop_data_cmd(client: Client, message: Message):
     """Admin: wipe test/sample shop data from Telegram.

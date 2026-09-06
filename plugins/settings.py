@@ -553,8 +553,7 @@ __Enter new link of start image or send the photo, or wait for 60 second timeout
             client.messages['START_PHOTO'] = res.text
             return await query.message.edit_text("**This link has been set at the place of start photo!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         elif res.photo:
-            loc = await res.download()
-            client.messages['START_PHOTO'] = loc
+            client.messages['START_PHOTO'] = res.photo.file_id
             return await query.message.edit_text("**This image has been set as the starting image!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         else:
             return await query.message.edit_text("**Invalid Photo or Link format!!**\n__If you're sending the link of any image it must starts with either 'http' or 'https'!__", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
@@ -578,8 +577,7 @@ __Enter new link of fsub image or send the photo, or wait for 60 second timeout 
             client.messages['FSUB_PHOTO'] = res.text
             return await query.message.edit_text("**This link has been set at the place of fsub photo!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         elif res.photo:
-            loc = await res.download()
-            client.messages['FSUB_PHOTO'] = loc
+            client.messages['FSUB_PHOTO'] = res.photo.file_id
             return await query.message.edit_text("**This image has been set as the force sub image!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         else:
             return await query.message.edit_text("**Invalid Photo or Link format!!**\n__If you're sending the link of any image it must starts with either 'http' or 'https'!__", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
