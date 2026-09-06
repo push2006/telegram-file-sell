@@ -1,6 +1,5 @@
 import os
 import logging
-from logging.handlers import RotatingFileHandler
 
 
 def _load_env_file(path=".env"):
@@ -89,11 +88,12 @@ def LOGGER(name: str, client_name: str) -> logging.Logger:
             f"[%(asctime)s - %(levelname)s] - {client_name} - %(name)s - %(message)s",
             datefmt='%d-%b-%y %H:%M:%S'
         )
-        file_handler = RotatingFileHandler(LOG_FILE_NAME, maxBytes=50_000_000, backupCount=10)
-        file_handler.setFormatter(formatter)
+        # No local file logging — writing to a growing log file on disk
+        # fills up hosting storage (e.g. Render) for no real benefit.
+        # Console output is enough; Render/most hosts already capture and
+        # let you view stdout/stderr in their own dashboard.
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
         logger.addHandler(stream_handler)
 
     return logger
