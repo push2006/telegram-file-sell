@@ -1,14 +1,15 @@
 """
-Shop plugin — paid/free content categories, coupon redemption, and
-manual-confirm crypto payments. Ported from the sale-engine project's
-access model onto the file-store bot's existing MongoDB layer.
+Shop plugin — Catalog = private channel access.
 
-Telegram Stars / card payments are intentionally NOT included here:
-hydrogram (the library this bot runs on) has no support for the
-Telegram Payments API (no send_invoice / successful_payment /
-pre_checkout_query). Only crypto (manual confirm), coupons, and
-admin-granted access are wired up.
+Architecture:
+  • Telegram channel  = videos/files (you upload manually)
+  • MongoDB           = packs, prices, who paid, settings, users
+  • Render            = runs the bot only (env vars, no file storage)
+
+No /addcontent. Price is per catalog (channel), not per file.
+Payments: manual confirm (/setpay methods) + optional Stars (stars_payment.py).
 """
+
 
 from hydrogram import Client, filters
 from hydrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -162,21 +163,7 @@ async def set_price(client: Client, message: Message):
     await message.reply_text(f"✅ Price for '{cat['name']}' updated to {price_text}.")
 
 
-@Client.on_message(filters.command("addcontent") & filters.private)
-async def add_content(client: Client, message: Message):
-    """Not required. Files are uploaded manually in the catalog channel."""
-    if not is_admin(message.from_user.id):
-        return
-    await message.reply_text(
-        "<b>/addcontent is not needed.</b>\n\n"
-        "Post files yourself in the private catalog channel.\n"
-        "The bot only handles: price → pay → join link → kick on expiry.\n\n"
-        "Setup:\n"
-        "1. /addcat Name|price_cents|days\n"
-        "2. Create private channel + bot admin\n"
-        "3. Upload files in that channel\n"
-        "4. /linkchannel CATEGORY_ID -100CHANNEL_ID"
-    )
+
 
 
 # ---------------------------------------------------------------- catalog / buy
@@ -193,14 +180,28 @@ def _catalog_markup(categories):
 
 
 async def _send_catalog(client: Client, chat_id: int, edit_message: Message = None, photo: str = None):
-    categories = await client.mongodb.list_categories()
+    try:
+        categories = await client.mongodb.list_categories()
+    except Exception as e:
+        client.LOGGER(__name__, client.name).warning(f"list_categories: {e}")
+        err = (
+            "⚠️ Database error loading catalog.\n"
+            f"<code>{e}</code>\n"
+            "Check MongoDB URI / Atlas IP allowlist."
+        )
+        return await client.send_message(chat_id, err)
+
     text = (
         "<b>🛒 Catalog</b>\n\n"
         "Price is for the whole catalog (the channel), not each file.\n"
         "Pick a pack:"
     )
     if not categories:
-        msg = "The catalog is empty right now."
+        msg = (
+            "📭 <b>Catalog is empty</b>\n\n"
+            "Admin: <code>/addcat Name|cents|days</code>\n"
+            "then <code>/linkchannel ID -100CHANNEL_ID</code>"
+        )
         if edit_message:
             try:
                 return await edit_message.edit_text(msg)
@@ -784,55 +785,32 @@ async def check_storage(client: Client, message: Message):
         await message.reply_text(f"❌ Can't access <code>{channel_id}</code>: {e}\nMake sure the bot is added there.")
 
 
-@Client.on_message(filters.command("listvideos") & filters.private)
-async def list_videos(client: Client, message: Message):
+
+@Client.on_message(filters.command(["listvideos", "delvideo", "addcontent"]) & filters.private)
+async def legacy_item_cmds_removed(client: Client, message: Message):
+    """Old per-file tools removed — content lives in the linked channel."""
     if not is_admin(message.from_user.id):
-        return await message.reply_text("Only admins can use this command.")
+        return
+    await message.reply_text(
+        "<b>Not used anymore.</b>\n\n"
+        "Upload files in your private channel, then:\n"
+        "<code>/addcat Name|cents|days</code>\n"
+        "<code>/linkchannel CATEGORY_ID -100CHANNEL_ID</code>\n\n"
+        "See /commands"
+    )
 
-    parts = message.command[1:]
-    if not parts:
-        return await message.reply_text("<b>Usage:</b> /listvideos category_id")
-
-    items = await client.mongodb.list_content_items(parts[0])
-    if not items:
-        return await message.reply_text("No content items in this category (or category doesn't exist).")
-
-    lines = ["<b>Content items:</b>\n"]
-    for it in items:
-        trial = " 🎁trial" if it.get("is_free_trial") else ""
-        name = it.get("name") or "(untitled)"
-        lines.append(f"• <code>{it['item_id']}</code> — {name}{trial}")
-    await message.reply_text("\n".join(lines))
-
-
-@Client.on_message(filters.command("delvideo") & filters.private)
-async def delete_video(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
-        return await message.reply_text("Only admins can use this command.")
-
-    parts = message.command[1:]
-    if len(parts) != 2:
-        return await message.reply_text("<b>Usage:</b> /delvideo category_id item_id")
-
-    ok = await client.mongodb.deactivate_content_item(parts[0], parts[1])
-    if ok:
-        await message.reply_text("✅ Item hidden from catalog.")
-    else:
-        await message.reply_text("Item not found.")
-
-
-# ---------------------------------------------------------------- search / my videos
 
 @Client.on_message(filters.command("search") & filters.private)
 async def search_shop(client: Client, message: Message):
     if len(message.command) < 2:
         return await message.reply_text("<b>Usage:</b> /search keyword")
-
     keyword = message.text.split(None, 1)[1]
-    results = await client.mongodb.search_categories(keyword)
+    try:
+        results = await client.mongodb.search_categories(keyword)
+    except Exception as e:
+        return await message.reply_text(f"DB error: <code>{e}</code>")
     if not results:
-        return await message.reply_text("No matching categories found.")
-
+        return await message.reply_text("No matching packs found.")
     buttons = []
     for cat in results:
         price_text = "Free" if cat["price_cents"] == 0 else f"${cat['price_cents'] / 100:.2f}"
@@ -844,39 +822,20 @@ async def search_shop(client: Client, message: Message):
 
 @Client.on_message(filters.command("myvideos") & filters.private)
 async def my_videos(client: Client, message: Message):
-    cats = await client.mongodb.get_user_unlocked_categories(message.from_user.id)
-    if not cats:
-        return await message.reply_text("You haven't unlocked anything yet. Tap Catalog to browse.")
-
-
-    buttons = [[InlineKeyboardButton(cat["name"], callback_data=f"cat_open_{cat['_id']}")] for cat in cats]
-    await message.reply_text("<b>Your unlocked categories:</b>", reply_markup=InlineKeyboardMarkup(buttons))
-
-
-# ---------------------------------------------------------------- free trial (per item)
-
-@Client.on_callback_query(filters.regex(r"^trial_"))
-async def use_free_trial(client: Client, cq: CallbackQuery):
-    category_id, item_id = cq.data.split("trial_", 1)[1].split(":", 1)
-    items = await client.mongodb.list_content_items(category_id)
-    item = next((i for i in items if i["item_id"] == item_id), None)
-    if not item or not item.get("is_free_trial"):
-        return await cq.answer("Free trial not available for this item.", show_alert=True)
-
-    if await client.mongodb.has_used_free_trial(cq.from_user.id, item_id):
-        return await cq.answer("You've already used your free trial for this item.", show_alert=True)
-
-    await client.mongodb.mark_free_trial_used(cq.from_user.id, item_id)
-    await cq.answer("🎁 Enjoy your free trial!")
+    """Unlocked packs — open again / get join link if still valid."""
     try:
-        await client.copy_message(
-            chat_id=cq.from_user.id,
-            from_chat_id=item["chat_id"],
-            message_id=item["message_id"],
-            protect_content=True
-        )
+        cats = await client.mongodb.get_user_unlocked_categories(message.from_user.id)
     except Exception as e:
-        client.LOGGER(__name__, client.name).warning(f"Trial delivery failed for {item}: {e}")
+        return await message.reply_text(f"DB error: <code>{e}</code>")
+    if not cats:
+        return await message.reply_text(
+            "You haven't unlocked anything yet.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("🛒 Open Catalog", callback_data="open_catalog")]
+            ]),
+        )
+    buttons = [[InlineKeyboardButton(cat["name"], callback_data=f"cat_open_{cat['_id']}")] for cat in cats]
+    await message.reply_text("<b>Your unlocked packs:</b>", reply_markup=InlineKeyboardMarkup(buttons))
 
 
 # ---------------------------------------------------------------- automated channel access
@@ -999,3 +958,47 @@ async def kick_expired_channel_members(client: Client) -> int:
                 f"kick failed user={row['user_id']} ch={row['channel_id']}: {e}"
             )
     return kicked
+
+
+@Client.on_message(filters.command(["commands", "adminhelp", "shophelp"]) & filters.private)
+async def list_commands(client: Client, message: Message):
+    """Full command list aligned with storage architecture."""
+    user = (
+        "<b>User</b>\n"
+        "/start — welcome + <b>Open Catalog</b>\n"
+        "/catalog or /shop — open catalog\n"
+        "/redeem CODE — coupon\n"
+        "/profile — your profile\n"
+    )
+    if not is_admin(message.from_user.id):
+        return await message.reply_text(user)
+
+    text = user + (
+        "\n<b>Setup catalog (admin)</b>\n"
+        "/addcat Name|cents|days — create pack ($4.99 = 499)\n"
+        "/listcat — list pack IDs\n"
+        "/delcat ID — remove pack\n"
+        "/setprice ID cents — change price\n"
+        "/setstarprice ID amount — Telegram Stars price\n"
+        "/linkchannel ID -100CHANNEL_ID — bind private channel\n"
+        "/checkstorage -100CHANNEL_ID — verify bot is admin\n"
+        "\n<b>Payments (admin)</b>\n"
+        "/setpay METHOD details — crypto|upi|card|paypal|bank|…\n"
+        "/payinfo — show active methods\n"
+        "/pending — unpaid orders\n"
+        "/confirm ORDER_ID — grant access + join link\n"
+        "/createcoupon CODE|cat_id|uses|days\n"
+        "\n<b>Data (admin)</b>\n"
+        "/cleardata orders|access|all — clear Mongo shop data\n"
+        "/dbstats — Mongo collection counts\n"
+        "/dbcleanup — remove stale FSUB/order junk\n"
+        "\n<b>Optional file-store</b>\n"
+        "/batch /genlink /db /adddb /removedb\n"
+        "/users /ban /unban /broadcast /stats\n"
+        "\n<b>Where data lives</b>\n"
+        "• Videos → Telegram private channel (manual upload)\n"
+        "• Mongo → packs, pay settings, who paid, users\n"
+        "• Render → running bot + env vars only (no files)\n"
+    )
+    await message.reply_text(text)
+

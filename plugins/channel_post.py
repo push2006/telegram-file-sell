@@ -6,7 +6,7 @@ from helper.helper_func import encode
 
 #===============================================================#
 
-@Client.on_message(filters.private & ~filters.command(['start', 'shortner','users','broadcast','batch','genlink','stats', 'pbroadcast', 'db', 'adddb', 'add_db', 'removedb', 'rm_db',  'ban', 'unban', 'addpremium', 'delpremium', 'premiumusers', 'request', 'profile', 'shop', 'catalog', 'redeem', 'search', 'myvideos', 'addcat', 'setprice', 'addcontent', 'listvideos', 'delvideo', 'checkstorage', 'createcoupon', 'pending', 'confirm', 'linkchannel', 'setpay', 'payinfo', 'cleardata']))
+@Client.on_message(filters.private & ~filters.command(['start', 'shortner', 'users', 'broadcast', 'batch', 'genlink', 'stats', 'pbroadcast', 'db', 'adddb', 'add_db', 'removedb', 'rm_db', 'ban', 'unban', 'addpremium', 'delpremium', 'premiumusers', 'request', 'profile', 'shop', 'catalog', 'redeem', 'search', 'myvideos', 'addcat', 'setprice', 'addcontent', 'listvideos', 'delvideo', 'checkstorage', 'createcoupon', 'pending', 'confirm', 'linkchannel', 'setpay', 'payinfo', 'cleardata', 'commands', 'adminhelp', 'shophelp', 'listcat', 'delcat', 'dbstats', 'dbcleanup', 'setstarprice']))
 async def channel_post(client: Client, message: Message):
     # Don't treat Catalog / Help keyboard taps as a file to store
     txt = (message.text or "").strip()

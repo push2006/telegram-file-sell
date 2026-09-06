@@ -4,7 +4,6 @@ from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton,
 import humanize
 from config import MSG_EFFECT, OWNER_ID
 from plugins.shortner import get_short
-from plugins.shop import _send_catalog
 from helper.helper_func import get_messages, decode, batch_auto_del_notification
 import asyncio
 
@@ -22,6 +21,14 @@ def start_inline_kb(is_admin: bool):
         InlineKeyboardButton("Close", callback_data="close"),
     ])
     return InlineKeyboardMarkup(rows)
+
+
+def start_reply_kb():
+    return ReplyKeyboardMarkup(
+        [["🛒 Open Catalog"], ["Help"]],
+        resize_keyboard=True,
+        one_time_keyboard=False,
+    )
 
 #===============================================================#
 
@@ -266,11 +273,54 @@ async def start_command(client: Client, message: Message):
             ))
         return
 
-    # 9. Normal start — just the photo + catalog, no gate, no extra screens
+    # 9. Normal start — welcome + Open Catalog (no /shop needed)
     else:
-        photo = resolve_photo(client.messages.get("START_PHOTO", ""))
-        await _send_catalog(client, message.chat.id, photo=photo if photo else None)
+        buttons = start_inline_kb(user_id in client.admins)
+        photo = client.messages.get("START_PHOTO", "")
+        try:
+            start_caption = client.messages.get("START", "Welcome, {mention}").format(
+                first=message.from_user.first_name,
+                last=message.from_user.last_name,
+                username=None if not message.from_user.username else "@" + message.from_user.username,
+                mention=message.from_user.mention,
+                id=message.from_user.id,
+            )
+        except Exception:
+            start_caption = f"Welcome, {message.from_user.mention}"
+        start_caption = (
+            f"{start_caption or 'Welcome'}\n\n"
+            "🛒 Tap <b>Open Catalog</b> to browse packs.\n"
+            "Pay → private channel join link."
+        )
+
+        sent = False
+        if photo:
+            try:
+                await client.send_photo(
+                    chat_id=message.chat.id,
+                    photo=photo,
+                    caption=start_caption,
+                    reply_markup=buttons,
+                )
+                sent = True
+            except Exception as e:
+                client.LOGGER(__name__, client.name).warning(f"start photo failed: {e}")
+        if not sent:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=start_caption,
+                reply_markup=buttons,
+            )
+        try:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text="⬇️ Or use the button below anytime",
+                reply_markup=start_reply_kb(),
+            )
+        except Exception:
+            pass
         return
+
 
 #===============================================================#
 
