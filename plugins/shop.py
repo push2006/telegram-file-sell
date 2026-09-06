@@ -71,6 +71,73 @@ async def add_category(client: Client, message: Message):
     )
 
 
+@Client.on_message(filters.command("listcat") & filters.private)
+async def list_categories_cmd(client: Client, message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.reply_text("Only admins can use this command.")
+
+    show_inactive = len(message.command) > 1 and message.command[1].lower() == "all"
+    categories = await client.mongodb.list_categories(active_only=not show_inactive)
+
+    if not categories:
+        return await message.reply_text(
+            "No categories found." if not show_inactive else "No categories found (including inactive)."
+        )
+
+    lines = ["<b>📂 Categories</b>\n"]
+    for cat in categories:
+        price = int(cat.get("price_cents") or 0)
+        days = int(cat.get("access_days") or 0)
+        price_text = "Free" if price == 0 else f"${price / 100:.2f}"
+        access_text = "Lifetime" if days == 0 else f"{days}d"
+        status = "" if cat.get("active", True) else " ❌ inactive"
+        linked = "📺" if cat.get("access_channel_id") else "⚠️ no channel"
+        lines.append(
+            f"• <b>{cat['name']}</b>{status}\n"
+            f"  ID: <code>{cat['_id']}</code>\n"
+            f"  {price_text} / {access_text} — {linked}"
+        )
+
+    lines.append("\nUse <code>/listcat all</code> to include inactive ones.")
+    lines.append("Use <code>/delcat CATEGORY_ID</code> to remove one.")
+    await message.reply_text("\n".join(lines))
+
+
+@Client.on_message(filters.command("delcat") & filters.private)
+async def delete_category_cmd(client: Client, message: Message):
+    if not is_admin(message.from_user.id):
+        return await message.reply_text("Only admins can use this command.")
+
+    usage = (
+        "<b>Usage:</b> /delcat CATEGORY_ID [hard]\n\n"
+        "Without <code>hard</code>, the category is just deactivated (hidden from "
+        "/shop, but existing orders/coupons/access records referencing it are kept).\n"
+        "With <code>hard</code>, the category document is permanently deleted.\n\n"
+        "Run <code>/listcat</code> to find a CATEGORY_ID."
+    )
+    if len(message.command) < 2:
+        return await message.reply_text(usage)
+
+    category_id = message.command[1]
+    hard = len(message.command) > 2 and message.command[2].lower() == "hard"
+
+    cat = await client.mongodb.get_category(category_id)
+    if not cat:
+        return await message.reply_text("No category found with that ID. Check /listcat.")
+
+    ok = await client.mongodb.delete_category(category_id, hard=hard)
+    if not ok:
+        return await message.reply_text("Could not delete that category. Check the ID and try again.")
+
+    if hard:
+        await message.reply_text(f"🗑 Permanently deleted category '{cat['name']}' (<code>{category_id}</code>).")
+    else:
+        await message.reply_text(
+            f"✅ Deactivated category '{cat['name']}' (<code>{category_id}</code>).\n"
+            f"It's hidden from /shop now. Use <code>/delcat {category_id} hard</code> to fully delete it."
+        )
+
+
 @Client.on_message(filters.command("setprice") & filters.private)
 async def set_price(client: Client, message: Message):
     if not is_admin(message.from_user.id):
