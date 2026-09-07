@@ -32,9 +32,13 @@ OWNER_ID = 8878090380
 
 MSG_EFFECT = 5046509860389126442
 
-SHORT_URL = "linkshortify.com" # shortner url 
-SHORT_API = "" 
-SHORT_TUT = ""
+# Shortener config — set via env vars so secrets aren't hardcoded in git.
+# Defaults below match the linkshort.in account currently in use;
+# override SHORT_URL / SHORT_API / SHORT_TUT in your .env / Render env
+# vars if you switch shortener providers or rotate the API token.
+SHORT_URL = os.environ.get("SHORT_URL", "linkshort.in")
+SHORT_API = os.environ.get("SHORT_API", "25d59129cec3f18f38721362ad555127c22efcf9")
+SHORT_TUT = os.environ.get("SHORT_TUT", "")
 
 # Bot Configuration
 SESSION = os.environ.get("SESSION", "YatoFileStoreBot")
