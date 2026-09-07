@@ -1,6 +1,7 @@
 import requests
 import random
 import string
+from urllib.parse import quote
 from config import SHORT_URL, SHORT_API, MESSAGES
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, InputMediaPhoto
@@ -31,7 +32,7 @@ def get_short(url, client):
         short_url = getattr(client, 'short_url', SHORT_URL)
         short_api = getattr(client, 'short_api', SHORT_API)
         
-        api_url = f"https://{short_url}/api?api={short_api}&url={url}&alias={alias}"
+        api_url = f"https://{short_url}/api?api={short_api}&url={quote(url, safe='')}&alias={alias}"
         response = requests.get(api_url)
         rjson = response.json()
 
@@ -234,7 +235,7 @@ async def test_shortner(client: Client, query: CallbackQuery):
     try:
         test_url = "https://google.com"
         alias = generate_random_alphanumeric()
-        api_url = f"https://{short_url}/api?api={short_api}&url={test_url}&alias={alias}"
+        api_url = f"https://{short_url}/api?api={short_api}&url={quote(test_url, safe='')}&alias={alias}"
         
         response = requests.get(api_url, timeout=10)
         rjson = response.json()
