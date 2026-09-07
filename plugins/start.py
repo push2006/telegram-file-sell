@@ -1,6 +1,7 @@
 from helper.helper_func import *
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+from hydrogram.errors import FloodWait
 import humanize
 from config import MSG_EFFECT, OWNER_ID
 from plugins.shortner import get_short
@@ -69,33 +70,46 @@ async def start_command(client: Client, message: Message):
         # 4. Check if shortner is enabled
         shortner_enabled = getattr(client, 'shortner_enabled', True)
 
-        # 5. If user is not premium AND shortner is enabled, send short URL and return
+        # 5. If user is not premium AND shortner is enabled, try to send a short link.
+        #    If the shortener fails or returns an invalid URL, fall through to
+        #    normal file delivery instead of crashing on BUTTON_URL_INVALID.
         if not is_user_pro and user_id != OWNER_ID and not is_short_link and shortner_enabled:
+            short_link = None
             try:
                 short_link = get_short(f"https://t.me/{client.username}?start=yu3elk{base64_string}7", client)
             except Exception as e:
                 client.LOGGER(__name__, client.name).warning(f"Shortener failed: {e}")
-                return await message.reply("Couldn't generate short link.")
 
-            short_photo = client.messages.get("SHORT_PIC", "")
-            short_caption = client.messages.get("SHORT_MSG", "")
-            tutorial_link = getattr(client, 'tutorial_link', "https://t.me/How_to_Download_7x/26")
+            if not short_link or not str(short_link).startswith(("http://", "https://")):
+                client.LOGGER(__name__, client.name).warning(
+                    f"Invalid short_link returned ({short_link!r}), skipping shortener and sending file directly."
+                )
+                # fall through — do NOT return, continue to normal file delivery below
+            else:
+                short_photo = client.messages.get("SHORT_PIC", "")
+                short_caption = client.messages.get("SHORT_MSG", "")
+                tutorial_link = getattr(client, 'tutorial_link', "https://t.me/How_to_Download_7x/26")
 
-            await client.send_photo(
-                chat_id=message.chat.id,
-                photo=short_photo,
-                caption=short_caption,
-                reply_markup=InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("• ᴏᴘᴇɴ ʟɪɴᴋ", url=short_link),
-                        InlineKeyboardButton("ᴛᴜᴛᴏʀɪᴀʟ •", url=tutorial_link)
-                    ],
-                    [
-                        InlineKeyboardButton(" • ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ •", url="https://t.me/Premium_Fliix/21")
-                    ]
-                ])
-            )
-            return  # prevent sending actual files
+                buttons_row = [InlineKeyboardButton("• ᴏᴘᴇɴ ʟɪɴᴋ", url=short_link)]
+                if tutorial_link and str(tutorial_link).startswith(("http://", "https://")):
+                    buttons_row.append(InlineKeyboardButton("ᴛᴜᴛᴏʀɪᴀʟ •", url=tutorial_link))
+
+                try:
+                    await client.send_photo(
+                        chat_id=message.chat.id,
+                        photo=short_photo,
+                        caption=short_caption,
+                        reply_markup=InlineKeyboardMarkup([
+                            buttons_row,
+                            [InlineKeyboardButton(" • ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ •", url="https://t.me/Premium_Fliix/21")]
+                        ])
+                    )
+                    return  # short link sent successfully — prevent sending actual files
+                except Exception as e:
+                    client.LOGGER(__name__, client.name).warning(
+                        f"Failed to send short-link photo/buttons: {e}. Falling back to file delivery."
+                    )
+                    # fall through — do NOT return, continue to normal file delivery below
 
         # 6. Decode and prepare file IDs
         try:
@@ -245,7 +259,7 @@ async def start_command(client: Client, message: Message):
                 )
                 yugen_msgs.append(copied_msg)
             except FloodWait as e:
-                await asyncio.sleep(e.x)
+                await asyncio.sleep(e.value)
                 copied_msg = await msg.copy(
                     chat_id=message.from_user.id,
                     caption=caption,
