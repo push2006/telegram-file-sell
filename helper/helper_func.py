@@ -2,12 +2,12 @@ import base64
 import os
 import re
 import asyncio
-from pyrogram import filters, Client
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.enums import ChatMemberStatus
-from pyrogram.errors import UserNotParticipant, Forbidden, PeerIdInvalid, ChatAdminRequired, FloodWait
+from hydrogram import filters, Client
+from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from hydrogram.enums import ChatMemberStatus
+from hydrogram.errors import UserNotParticipant, Forbidden, PeerIdInvalid, ChatAdminRequired, FloodWait
 from datetime import datetime, timedelta
-from pyrogram import errors
+from hydrogram import errors
 
 
 def resolve_photo(value: str):
@@ -64,7 +64,7 @@ async def get_messages(client, message_ids):
             # Use new multi-DB channel function
             msgs = await get_messages_from_db_channels(client, temb_ids)
         except FloodWait as e:
-            await asyncio.sleep(e.x)
+            await asyncio.sleep(e.value)
             msgs = await get_messages_from_db_channels(client, temb_ids)
         except:
             pass
@@ -182,7 +182,7 @@ async def get_messages_from_db_channels(client, temb_ids):
                 continue
         
     except FloodWait as e:
-        await asyncio.sleep(e.x)
+        await asyncio.sleep(e.value)
         # Retry with the same function
         return await get_messages_from_db_channels(client, temb_ids)
     except Exception as e:
