@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 #(©) Codeflix_Bots
 
 from aiohttp import web
@@ -23,7 +24,8 @@ class Bot(Client):
                 "root": "plugins"
             },
             workers=workers,
-            bot_token=token
+            bot_token=token,
+            in_memory=True
         )
         self.LOGGER = LOGGER
         self.name = session
@@ -32,7 +34,7 @@ class Bot(Client):
         self.owner = OWNER_ID
         self.fsub_dict = {}
         self.admins = admins + [OWNER_ID] if OWNER_ID not in admins else admins
-        self.messages = messages
+        self.messages = dict(messages)
         self.auto_del = auto_del
         self.protect = protect
         self.req_fsub = {}
@@ -44,7 +46,24 @@ class Bot(Client):
         self.primary_db_channel = db  # Set initial primary DB channel
     
     async def start(self):
+        # New branding is opt-in; legacy promotional settings remain archived.
+        if not await self.mongodb.get_bot_setting("push2006_settings_initialized", False):
+            old = await self.mongodb.get_messages_settings()
+            old_fsub = await self.mongodb.get_fsub_channels()
+            old_admins = await self.mongodb.get_admins_list()
+            await self.mongodb.db["business_settings_archive"].update_one({"_id":"initial"}, {"$setOnInsert":{"messages":old,"force_sub":old_fsub,"admins":old_admins}}, upsert=True)
+            await self.mongodb.set_messages_settings(dict(self.messages))
+            await self.mongodb.set_admins_list(list(self.admins))
+            await self.mongodb.set_shortner_settings({"enabled":False,"short_url":"","short_api":"","tutorial_link":""})
+            await self.mongodb.set_fsub_channels({})
+            await self.mongodb.update_bot_setting("push2006_settings_initialized", True)
+        saved = await self.mongodb.get_messages_settings()
+        self.messages.update({k: v for k, v in saved.items() if k in tuple(self.messages) and isinstance(v, str)})
+        self.reply_text = self.messages.get("REPLY", self.reply_text)
+        saved_admins = await self.mongodb.get_admins_list()
+        self.admins[:] = list(dict.fromkeys([self.owner] + self.admins + [x for x in saved_admins if isinstance(x, int)]))
         await super().start()
+        await self.mongodb.orders.create_index("charge_id", unique=True, sparse=True)
         usr_bot_me = await self.get_me()
         self.uptime = datetime.now()
         
@@ -91,7 +110,7 @@ class Bot(Client):
                 except Exception as e:
                     self.LOGGER(__name__, self.name).warning(f"Could not load dynamic fsub channel {channel_id}: {e}")
                     # Remove invalid channel from database
-                    await self.mongodb.remove_fsub_channel(channel_id)
+                    pass
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Error loading dynamic fsub channels: {e}")
             
@@ -120,7 +139,7 @@ class Bot(Client):
                 except Exception as e:
                     self.LOGGER(__name__, self.name).warning(f"Could not load DB channel {channel_id}: {e}")
                     # Remove invalid channel from database
-                    await self.mongodb.remove_db_channel(channel_id)
+                    pass
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Error loading DB channels: {e}")
         
@@ -130,29 +149,20 @@ class Bot(Client):
             self.short_url = shortner_settings.get('short_url', SHORT_URL)
             self.short_api = shortner_settings.get('short_api', SHORT_API)
             self.tutorial_link = shortner_settings.get('tutorial_link', SHORT_TUT)
-            self.shortner_enabled = shortner_settings.get('enabled', True)
+            self.shortner_enabled = shortner_settings.get('enabled', False)
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Error loading shortner settings: {e}")
             # Set defaults from config if loading fails
             self.short_url = SHORT_URL
             self.short_api = SHORT_API
             self.tutorial_link = SHORT_TUT
-            self.shortner_enabled = True
+            self.shortner_enabled = False
         
-        try:
-            db_channel = await self.get_chat(self.db)
-            self.db_channel = db_channel
-            test = await self.send_message(chat_id = db_channel.id, text = "Testing Message by @ProYato")
-            await test.delete()
-            
-            # Log DB channels info
-            self.LOGGER(__name__, self.name).info(f"Primary DB Channel: {self.primary_db_channel}")
-            self.LOGGER(__name__, self.name).info(f"Total DB Channels: {len(self.db_channels)}")
-        except Exception as e:
-            self.LOGGER(__name__, self.name).warning(e)
-            self.LOGGER(__name__, self.name).warning(f"Make Sure bot is Admin in DB Channel, and Double check the database channel Value, Current Value {self.db}")
-            self.LOGGER(__name__, self.name).info("\nBot Stopped. Join https://t.me/MATTISSE for support")
-            sys.exit()
+        if self.db:
+            try:
+                self.db_channel = await self.get_chat(self.db)
+            except Exception:
+                self.LOGGER(__name__, self.name).warning("Storage channel unavailable; configure /adddb.")
         self.LOGGER(__name__, self.name).info("Bot Started!!")
         
         # Send restart msge to owner
@@ -227,11 +237,14 @@ class Bot(Client):
                     self.LOGGER(__name__, self.name).exception("auto-clean loop error")
                 await asyncio.sleep(interval)
 
-        self.expiry_task = asyncio.create_task(_expiry_loop())
-        self.auto_clean_task = asyncio.create_task(_auto_clean_loop())
+        if os.environ.get("ENABLE_EXPIRY", "0") == "1":
+            self.expiry_task = asyncio.create_task(_expiry_loop())
+        # Automatic deletion of old financial data is deliberately disabled.
+        from plugins.business import maintenance_loop
+        self.business_task = asyncio.create_task(maintenance_loop(self))
 
     async def stop(self, *args):
-        for name in ("expiry_task", "auto_clean_task"):
+        for name in ("expiry_task", "auto_clean_task", "business_task"):
             task = getattr(self, name, None)
             if task:
                 task.cancel()

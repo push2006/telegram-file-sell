@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 
 import asyncio
 from bot import Bot, web_app

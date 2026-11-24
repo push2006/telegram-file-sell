@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 from hydrogram import Client, filters
 from hydrogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 import time
@@ -137,6 +138,8 @@ async def usage_cmd(client: Client, message: Message):
 
 @Client.on_callback_query(filters.regex("^add_admin$"))
 async def add_new_admins(client: Client, query: CallbackQuery):
+    if query.from_user.id != client.owner:
+        return await query.answer("Admins only.", show_alert=True)
     await query.answer()
     if not query.from_user.id in client.admins:
         return await client.send_message(query.from_user.id, client.reply_text)
@@ -150,6 +153,7 @@ async def add_new_admins(client: Client, query: CallbackQuery):
             
     except Exception as e:
         return await ids_msg.reply(f"Error: {e}")
+    await client.mongodb.set_admins_list(client.admins)
     await admins(client, query)
     return await ids_msg.reply(f"__{len(ids)} admin {'id' if len(ids)==1 else 'ids'} have been promoted!!__")
     
@@ -157,6 +161,8 @@ async def add_new_admins(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("^rm_admin$"))
 async def remove_admins(client: Client, query: CallbackQuery):
+    if query.from_user.id != client.owner:
+        return await query.answer("Admins only.", show_alert=True)
     await query.answer()
     if not query.from_user.id in client.admins:
         return await client.send_message(query.from_user.id, client.reply_text)
@@ -166,12 +172,13 @@ async def remove_admins(client: Client, query: CallbackQuery):
     try:
         for identifier in ids:
             if int(identifier) == client.owner:
-                await client.send_message(query.from_user.id, "Nigga i can never remove the owner from the admin list!!")
+                await client.send_message(query.from_user.id, "The owner cannot be removed.")
                 continue
             if int(identifier) in client.admins:
                 client.admins.remove(int(identifier))
     except Exception as e:
         return await ids_msg.reply(f"Error: {e}")
+    await client.mongodb.set_admins_list(client.admins)
     await admins(client, query)
     return await ids_msg.reply(f"__{len(ids)} admin {'id' if len(ids)==1 else 'ids'} have been removed!!__")
     

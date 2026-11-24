@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 from hydrogram import Client, filters
 from hydrogram.raw.types import MessageActionPinMessage
 from hydrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, UserNotParticipant, Forbidden, PeerIdInvalid, ChatAdminRequired

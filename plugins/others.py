@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 from hydrogram import Client, filters
 from hydrogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from config import MSG_EFFECT
@@ -58,6 +59,8 @@ __ᴜsᴇ ᴛʜᴇ ʙᴜᴛᴛᴏɴs ʙᴇʟᴏᴡ ᴛᴏ ᴍᴀɴᴀɢᴇ ʏᴏ
 
 @Client.on_callback_query(filters.regex("^db_details$"))
 async def db_details(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     """Show detailed information about DB channels"""
     if not query.from_user.id in client.admins:
         return await query.answer('✗ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs!', show_alert=True)
@@ -110,6 +113,8 @@ async def db_details(client, query):
 
 @Client.on_callback_query(filters.regex("^back_to_db_management$"))
 async def back_to_db_management(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     """Go back to main DB channels management"""
     if not query.from_user.id in client.admins:
         return await query.answer('✗ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs!', show_alert=True)
@@ -185,7 +190,7 @@ async def quick_add_db(client: Client, message: Message):
     # Verify bot can access the channel
     try:
         chat = await client.get_chat(channel_id)
-        test_msg = await client.send_message(chat_id=channel_id, text="ᴛᴇsᴛɪɴɢ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴀᴄᴄᴇss - @Okabe_xRintarou")
+        test_msg = await client.send_message(chat_id=channel_id, text="ᴛᴇsᴛɪɴɢ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴀᴄᴄᴇss")
         await test_msg.delete()
         
         # Add channel to database

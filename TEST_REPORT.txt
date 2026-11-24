@@ -1,0 +1,15 @@
+test_accounting_conservation (test_business_rules.Rules.test_accounting_conservation) ... ok
+test_cross_seller (test_business_rules.Rules.test_cross_seller) ... ok
+test_full_commission (test_business_rules.Rules.test_full_commission) ... ok
+test_negative_and_zero (test_business_rules.Rules.test_negative_and_zero) ... ok
+test_one_star_rounding (test_business_rules.Rules.test_one_star_rounding) ... ok
+test_overallocated_commission (test_business_rules.Rules.test_overallocated_commission) ... ok
+test_payment_mismatch (test_business_rules.Rules.test_payment_mismatch) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.000s
+
+OK
+
+All Python source files compiled successfully.
+Dependency installation: blocked by DNS/network access. Live integration: not tested.

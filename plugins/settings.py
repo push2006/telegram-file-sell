@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 from hydrogram import Client, filters
 from hydrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from hydrogram.errors.pyromod import ListenerTimeout
@@ -8,6 +9,8 @@ import humanize
 
 @Client.on_callback_query(filters.regex("^settings$"))
 async def settings(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     # Count active force subscription channels by type
     total_fsub = len(client.fsub_dict)
     request_enabled = sum(1 for data in client.fsub_dict.values() if data[2])
@@ -50,6 +53,8 @@ async def settings(client, query):
 
 @Client.on_callback_query(filters.regex("^settings_page_2$"))
 async def settings_page_2(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     # Count active force subscription channels by type
     total_fsub = len(client.fsub_dict)
     request_enabled = sum(1 for data in client.fsub_dict.values() if data[2])
@@ -92,6 +97,8 @@ async def settings_page_2(client, query):
 
 @Client.on_callback_query(filters.regex("^fsub$"))
 async def fsub(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     # Create a formatted list of channels with names and IDs
     if client.fsub_dict:
         channel_list = []
@@ -122,6 +129,8 @@ __ᴜsᴇ ᴛʜᴇ ᴀᴘᴘʀᴏᴘʀɪᴀᴛᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ
 
 @Client.on_callback_query(filters.regex("^db_channels$"))
 async def db_channels(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('✗ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs!', show_alert=True)
     
@@ -163,6 +172,8 @@ __ᴜsᴇ ᴛʜᴇ ᴀᴘᴘʀᴏᴘʀɪᴀᴛᴇ ʙᴜᴛᴛᴏɴ ʙᴇʟᴏᴡ
 
 @Client.on_callback_query(filters.regex("^add_db_channel$"))
 async def add_db_channel(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('✗ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs!', show_alert=True)
     
@@ -195,7 +206,7 @@ __sᴇɴᴅ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ɪᴅ (ɴᴇɢᴀᴛɪᴠᴇ ɪɴᴛᴇɢ
         # Verify bot can access the channel
         try:
             chat = await client.get_chat(channel_id)
-            test_msg = await client.send_message(chat_id=channel_id, text="ᴛᴇsᴛɪɴɢ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴀᴄᴄᴇss - @Okabe_xRintarou")
+            test_msg = await client.send_message(chat_id=channel_id, text="ᴛᴇsᴛɪɴɢ ᴅʙ ᴄʜᴀɴɴᴇʟ ᴀᴄᴄᴇss")
             await test_msg.delete()
             
             # Add channel to database
@@ -246,6 +257,8 @@ __sᴇɴᴅ ᴛʜᴇ ᴄʜᴀɴɴᴇʟ ɪᴅ (ɴᴇɢᴀᴛɪᴠᴇ ɪɴᴛᴇɢ
 
 @Client.on_callback_query(filters.regex("^rm_db_channel$"))
 async def rm_db_channel(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs!', show_alert=True)
     
@@ -303,6 +316,8 @@ async def rm_db_channel(client, query):
 
 @Client.on_callback_query(filters.regex("^set_primary_db$"))
 async def set_primary_db(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs!', show_alert=True)
     
@@ -361,6 +376,8 @@ async def set_primary_db(client, query):
 
 @Client.on_callback_query(filters.regex("^toggle_db_status$"))
 async def toggle_db_status(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴs ᴄᴀɴ ᴜsᴇ ᴛʜɪs!', show_alert=True)
     
@@ -420,6 +437,8 @@ async def toggle_db_status(client, query):
 
 @Client.on_callback_query(filters.regex("^admins$"))
 async def admins(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     if not (query.from_user.id==OWNER_ID):
         return await query.answer('This can only be used by owner.')
     msg = f"""<blockquote>**Admin Settings:**</blockquote>
@@ -438,6 +457,8 @@ __Use the appropriate button below to add or remove an admin based on your needs
 
 @Client.on_callback_query(filters.regex("^photos$"))
 async def photos(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     msg = f"""<blockquote>**Force Subscription Settings:**</blockquote>
 **Start Photo:** `{client.messages.get("START_PHOTO", "None")}`
 **Force Sub Photo:** `{client.messages.get('FSUB_PHOTO', 'None')}`
@@ -469,6 +490,8 @@ __Use the appropriate button below to add or remove any admin based on your need
 
 @Client.on_callback_query(filters.regex("^protect$"))
 async def protect(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     client.protect = False if client.protect else True
     return await settings(client, query)
 
@@ -476,6 +499,8 @@ async def protect(client, query):
 
 @Client.on_callback_query(filters.regex("^auto_del$"))
 async def auto_del(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     msg = f"""<blockquote>**Change Auto Delete Time:**</blockquote>
 **Current Timer:** `{client.auto_del}`
 
@@ -502,6 +527,8 @@ __Enter new integer value of auto delete timer, keep 0 to disable auto delete an
 
 @Client.on_callback_query(filters.regex("^texts$"))
 async def texts(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     msg = f"""<blockquote>**Text Configuration:**</blockquote>
 **Start Message:**
 <pre>{client.messages.get('START', 'Empty')}</pre>
@@ -524,6 +551,11 @@ async def texts(client, query):
 
 @Client.on_callback_query(filters.regex('^rm_start_photo$'))
 async def rm_start_photo(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
+    await client.mongodb.update_message_setting("START_PHOTO", '')
     client.messages['START_PHOTO'] = ''
     await query.answer()
     await photos(client, query)
@@ -532,6 +564,11 @@ async def rm_start_photo(client, query):
 
 @Client.on_callback_query(filters.regex('^rm_fsub_photo$'))
 async def rm_fsub_photo(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
+    await client.mongodb.update_message_setting("FSUB_PHOTO", '')
     client.messages['FSUB_PHOTO'] = ''
     await query.answer()
     await photos(client, query)
@@ -540,6 +577,10 @@ async def rm_fsub_photo(client, query):
 
 @Client.on_callback_query(filters.regex("^add_start_photo$"))
 async def add_start_photo(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     msg = f"""<blockquote>**Change Start Image:**</blockquote>
 **Current Start Image:** `{client.messages.get('START_PHOTO', '')}`
 
@@ -549,10 +590,12 @@ __Enter new link of start image or send the photo, or wait for 60 second timeout
     await query.message.edit_text(msg)
     try:
         res = await client.listen(user_id=query.from_user.id, filters=(filters.text|filters.photo), timeout=60)
-        if res.text and res.text.startswith('https://' or 'http://'):
+        if res.text and res.text.startswith(("https://", "http://")):
+            await client.mongodb.update_message_setting("START_PHOTO", res.text)
             client.messages['START_PHOTO'] = res.text
             return await query.message.edit_text("**This link has been set at the place of start photo!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         elif res.photo:
+            await client.mongodb.update_message_setting("START_PHOTO", res.photo.file_id)
             client.messages['START_PHOTO'] = res.photo.file_id
             return await query.message.edit_text("**This image has been set as the starting image!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         else:
@@ -564,6 +607,10 @@ __Enter new link of start image or send the photo, or wait for 60 second timeout
 
 @Client.on_callback_query(filters.regex("^add_fsub_photo$"))
 async def add_fsub_photo(client, query):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     msg = f"""<blockquote>**Change Force Sub Image:**</blockquote>
 **Current Force Sub Image:** `{client.messages.get('FSUB_PHOTO', '')}`
 
@@ -573,10 +620,12 @@ __Enter new link of fsub image or send the photo, or wait for 60 second timeout 
     await query.message.edit_text(msg)
     try:
         res = await client.listen(user_id=query.from_user.id, filters=(filters.text|filters.photo), timeout=60)
-        if res.text and res.text.startswith('https://' or 'http://'):
+        if res.text and res.text.startswith(("https://", "http://")):
+            await client.mongodb.update_message_setting("FSUB_PHOTO", res.text)
             client.messages['FSUB_PHOTO'] = res.text
             return await query.message.edit_text("**This link has been set at the place of fsub photo!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         elif res.photo:
+            await client.mongodb.update_message_setting("FSUB_PHOTO", res.photo.file_id)
             client.messages['FSUB_PHOTO'] = res.photo.file_id
             return await query.message.edit_text("**This image has been set as the force sub image!!**", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton('◂ ʙᴀᴄᴋ', 'photos')]]))
         else:

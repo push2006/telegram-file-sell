@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 import requests
 import random
 import string
@@ -33,7 +34,7 @@ def get_short(url, client):
         short_api = getattr(client, 'short_api', SHORT_API)
         
         api_url = f"https://{short_url}/api?api={short_api}&url={quote(url, safe='')}&alias={alias}"
-        response = requests.get(api_url)
+        response = requests.get(api_url, timeout=8)
         rjson = response.json()
 
         if rjson.get("status") == "success" and response.status_code == 200:
@@ -41,7 +42,7 @@ def get_short(url, client):
             shortened_urls_cache[url] = short_url
             return short_url
     except Exception as e:
-        print(f"[Shortener Error] {e}")
+        print("Shortener request failed.")
 
     return url  # fallback
 
@@ -49,6 +50,8 @@ def get_short(url, client):
 
 @Client.on_message(filters.command('shortner') & filters.private)
 async def shortner_command(client: Client, message: Message):
+    if message.from_user.id != client.owner:
+        return await message.reply_text("Owner only.")
     await shortner_panel(client, message)
 
 #===============================================================#
@@ -57,7 +60,7 @@ async def shortner_panel(client, query_or_message):
     # Get current shortner settings
     short_url = getattr(client, 'short_url', SHORT_URL)
     short_api = getattr(client, 'short_api', SHORT_API)
-    tutorial_link = getattr(client, 'tutorial_link', "https://t.me/How_to_Download_7x/26")
+    tutorial_link = getattr(client, 'tutorial_link', "")
     shortner_enabled = getattr(client, 'shortner_enabled', True)
     
     # Check if shortner is working (only if enabled)
@@ -77,7 +80,7 @@ async def shortner_panel(client, query_or_message):
 **<u>ᴄᴜʀʀᴇɴᴛ ꜱᴇᴛᴛɪɴɢꜱ:</u>**
 <blockquote>›› **ꜱʜᴏʀᴛɴᴇʀ ꜱᴛᴀᴛᴜꜱ:** {enabled_text}
 ›› **ꜱʜᴏʀᴛɴᴇʀ ᴜʀʟ:** `{short_url}`
-›› **ꜱʜᴏʀᴛɴᴇʀ ᴀᴘɪ:** `{short_api}`</blockquote> 
+›› **ꜱʜᴏʀᴛɴᴇʀ ᴀᴘɪ:** `configured`</blockquote> 
 <blockquote>›› **ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ:** `{tutorial_link}`
 ›› **ᴀᴘɪ ꜱᴛᴀᴛᴜꜱ:** {status}</blockquote>
 
@@ -90,21 +93,21 @@ async def shortner_panel(client, query_or_message):
         [InlineKeyboardButton('◂ ʙᴀᴄᴋ ᴛᴏ ꜱᴇᴛᴛɪɴɢꜱ', 'settings')] if hasattr(query_or_message, 'message') else []
     ])
     
-    image_url = MESSAGES.get("SHORT", "https://telegra.ph/file/8aaf4df8c138c6685dcee-05d3b183d4978ec347.jpg")
-    
     if hasattr(query_or_message, 'message'):
-        await query_or_message.message.edit_media(
-            media=InputMediaPhoto(media=image_url, caption=msg),
-            reply_markup=reply_markup
-        )
+        try:
+            await query_or_message.message.edit_text(msg, reply_markup=reply_markup)
+        except Exception:
+            await query_or_message.message.reply_text(msg, reply_markup=reply_markup)
     else:
-        await query_or_message.reply_photo(photo=image_url, caption=msg, reply_markup=reply_markup)
+        await query_or_message.reply_text(msg, reply_markup=reply_markup)
 
 
 #===============================================================#
 
 @Client.on_callback_query(filters.regex("^shortner$"))
 async def shortner_callback(client, query):
+    if query.from_user.id != client.owner:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
     await query.answer()
@@ -114,6 +117,8 @@ async def shortner_callback(client, query):
 
 @Client.on_callback_query(filters.regex("^toggle_shortner$"))
 async def toggle_shortner(client: Client, query: CallbackQuery):
+    if query.from_user.id != client.owner:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
     # Toggle the shortner status
@@ -134,6 +139,8 @@ async def toggle_shortner(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("^add_shortner$"))
 async def add_shortner(client: Client, query: CallbackQuery):
+    if query.from_user.id != client.owner:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
     
@@ -188,17 +195,19 @@ __<blockquote>**≡ ꜱᴇɴᴅ ɴᴇᴡ ꜱʜᴏʀᴛɴᴇʀ ᴜʀʟ ᴀɴᴅ �
 
 @Client.on_callback_query(filters.regex("^set_tutorial_link$"))
 async def set_tutorial_link(client: Client, query: CallbackQuery):
+    if query.from_user.id != client.owner:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
     
     await query.answer()
         
-    current_tutorial = getattr(client, 'tutorial_link', "https://t.me/How_to_Download_7x/26")
+    current_tutorial = getattr(client, 'tutorial_link', "")
     msg = f"""<blockquote>**ꜱᴇᴛ ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ:**</blockquote>
 **ᴄᴜʀʀᴇɴᴛ ᴛᴜᴛᴏʀɪᴀʟ:** `{current_tutorial}`
 
 __ꜱᴇɴᴅ ᴛʜᴇ ɴᴇᴡ ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ ɪɴ ᴛʜᴇ ɴᴇxᴛ 60 ꜱᴇᴄᴏɴᴅꜱ!__
-**ᴇxᴀᴍᴘʟᴇ:** `https://t.me/How_to_Download_7x/26`"""
+**ᴇxᴀᴍᴘʟᴇ:** `https://example.com/tutorial`"""
     
     await query.message.edit_text(msg)
     try:
@@ -222,6 +231,8 @@ __ꜱᴇɴᴅ ᴛʜᴇ ɴᴇᴡ ᴛᴜᴛᴏʀɪᴀʟ ʟɪɴᴋ ɪɴ ᴛʜᴇ ɴ
 
 @Client.on_callback_query(filters.regex("^test_shortner$"))
 async def test_shortner(client: Client, query: CallbackQuery):
+    if query.from_user.id != client.owner:
+        return await query.answer("Admins only.", show_alert=True)
     if not query.from_user.id in client.admins:
         return await query.answer('❌ ᴏɴʟʏ ᴀᴅᴍɪɴꜱ ᴄᴀɴ ᴜꜱᴇ ᴛʜɪꜱ!', show_alert=True)
     

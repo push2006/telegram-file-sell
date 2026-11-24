@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 """
 Shop plugin — Catalog = private channel access.
 
@@ -17,15 +18,15 @@ from hydrogram.errors import RPCError
 from config import ADMINS, OWNER_ID
 
 
-def is_admin(user_id: int) -> bool:
-    return user_id == OWNER_ID or user_id in ADMINS
+def is_admin(user_id: int, client=None) -> bool:
+    return user_id == OWNER_ID or user_id in (client.admins if client else ADMINS)
 
 
 # ---------------------------------------------------------------- admin: categories
 
 @Client.on_message(filters.command("addcat") & filters.private)
 async def add_category(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     usage = (
@@ -49,7 +50,7 @@ async def add_category(client: Client, message: Message):
     except ValueError:
         return await message.reply_text(usage)
 
-    if not name:
+    if not name or price_cents < 0 or access_days < 0:
         return await message.reply_text(usage)
 
     existing = await client.mongodb.get_category_by_name(name)
@@ -74,7 +75,7 @@ async def add_category(client: Client, message: Message):
 
 @Client.on_message(filters.command("listcat") & filters.private)
 async def list_categories_cmd(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     show_inactive = len(message.command) > 1 and message.command[1].lower() == "all"
@@ -106,7 +107,7 @@ async def list_categories_cmd(client: Client, message: Message):
 
 @Client.on_message(filters.command("delcat") & filters.private)
 async def delete_category_cmd(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     usage = (
@@ -126,7 +127,7 @@ async def delete_category_cmd(client: Client, message: Message):
     if not cat:
         return await message.reply_text("No category found with that ID. Check /listcat.")
 
-    ok = await client.mongodb.delete_category(category_id, hard=hard)
+    ok = await client.mongodb.delete_category(category_id, hard=False)
     if not ok:
         return await message.reply_text("Could not delete that category. Check the ID and try again.")
 
@@ -141,7 +142,7 @@ async def delete_category_cmd(client: Client, message: Message):
 
 @Client.on_message(filters.command("setprice") & filters.private)
 async def set_price(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     parts = message.command[1:]
@@ -171,7 +172,7 @@ async def set_price(client: Client, message: Message):
 def _catalog_markup(categories):
     buttons = []
     for cat in categories:
-        price_text = "Free" if cat["price_cents"] == 0 else f"${cat['price_cents'] / 100:.2f}"
+        price_text = "Free" if cat["price_cents"] == 0 else f"⭐ {cat.get('price_stars') or cat['price_cents']}"
         buttons.append([InlineKeyboardButton(
             f"{cat['name']} — {price_text}",
             callback_data=f"cat_view_{cat['_id']}"
@@ -257,17 +258,19 @@ async def open_catalog_cb(client: Client, cq: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(r"^cat_view_"))
 async def view_category(client: Client, cq: CallbackQuery):
+    if await client.mongodb.is_banned(cq.from_user.id):
+        return await cq.answer("Access restricted.", show_alert=True)
     category_id = cq.data.split("cat_view_", 1)[1]
     cat = await client.mongodb.get_category(category_id)
-    if not cat:
-        return await cq.answer("This category no longer exists.", show_alert=True)
+    if not cat or (not cat.get("active",True) and not await client.mongodb.has_category_access(cq.from_user.id,category_id)):
+        return await cq.answer("This category is unavailable.", show_alert=True)
 
     price = int(cat.get("price_cents") or 0)
     has_access = True if price == 0 else await client.mongodb.has_category_access(cq.from_user.id, category_id)
     linked = bool(cat.get("access_channel_id"))
     days = int(cat.get("access_days") or 0)
     days_label = "lifetime" if days == 0 else f"{days} days"
-    price_text = "Free" if price == 0 else f"${price / 100:.2f} / {days_label}"
+    price_text = "Free" if price == 0 else f"⭐ {cat.get('price_stars') or price} / {days_label}"
 
     text = (
         f"<b>{cat['name']}</b>\n"
@@ -305,10 +308,12 @@ async def back_to_catalog(client: Client, cq: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^cat_open_"))
 async def open_category(client: Client, cq: CallbackQuery):
     """Only action after unlock: send single-use invite to the private catalog channel."""
+    if await client.mongodb.is_banned(cq.from_user.id):
+        return await cq.answer("Access restricted.", show_alert=True)
     category_id = cq.data.split("cat_open_", 1)[1]
     cat = await client.mongodb.get_category(category_id)
-    if not cat:
-        return await cq.answer("This category no longer exists.", show_alert=True)
+    if not cat or (not cat.get("active",True) and not await client.mongodb.has_category_access(cq.from_user.id,category_id)):
+        return await cq.answer("This category is unavailable.", show_alert=True)
 
     price = int(cat.get("price_cents") or 0)
     if price > 0 and not await client.mongodb.has_category_access(cq.from_user.id, category_id):
@@ -370,7 +375,7 @@ async def redeem_prompt(client: Client, cq: CallbackQuery):
 
 @Client.on_message(filters.command("createcoupon") & filters.private)
 async def create_coupon(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     usage = (
@@ -412,7 +417,7 @@ PAYMENT_METHODS = {
     # Crypto — only method kept here. Telegram Stars is added dynamically by
     # plugins/stars_payment.py (kept separate so its callback routing doesn't
     # collide with the generic cat_buy_<method>_ handler below).
-    "crypto": {"label": "🪙 USDT / crypto wallet"},
+    "crypto": {"label": "Legacy manual payments (disabled)"},
 }
 
 # short keys only — callback_data must stay under 64 bytes
@@ -438,28 +443,17 @@ async def _payment_instructions(client: Client, method: str) -> str:
 
 async def _enabled_methods(client: Client) -> list:
     """Only show methods the admin has configured (plus crypto if legacy wallet exists)."""
-    enabled = []
-    for mid in PAYMENT_METHODS:
-        if mid == "stars":
-            # Stars needs no admin-configured text/wallet — it's always offered.
-            enabled.append(mid)
-            continue
-        if mid == "crypto":
-            val = await client.mongodb.get_bot_setting("pay_crypto", "") \
-                or await client.mongodb.get_bot_setting("crypto_wallet", "")
-        else:
-            val = await client.mongodb.get_bot_setting(f"pay_{mid}", "")
-        if val and str(val).strip():
-            enabled.append(mid)
-    return enabled
+    return ["stars"]
 
 
 @Client.on_callback_query(filters.regex(r"^cat_paymenu_"))
 async def pay_menu(client: Client, cq: CallbackQuery):
+    if await client.mongodb.is_banned(cq.from_user.id):
+        return await cq.answer("Access restricted.", show_alert=True)
     category_id = cq.data.split("cat_paymenu_", 1)[1]
     cat = await client.mongodb.get_category(category_id)
-    if not cat:
-        return await cq.answer("This category no longer exists.", show_alert=True)
+    if not cat or (not cat.get("active",True) and not await client.mongodb.has_category_access(cq.from_user.id,category_id)):
+        return await cq.answer("This category is unavailable.", show_alert=True)
 
     methods = await _enabled_methods(client)
     if not methods:
@@ -511,52 +505,12 @@ async def pay_menu(client: Client, cq: CallbackQuery):
 
 @Client.on_callback_query(filters.regex(rf"^cat_buy_({_METHOD_RE})_"))
 async def buy_with_method(client: Client, cq: CallbackQuery):
-    rest = cq.data[len("cat_buy_"):]
-    method, category_id = rest.split("_", 1)
-    if method not in PAYMENT_METHODS:
-        return await cq.answer("Unknown method.", show_alert=True)
-
-    cat = await client.mongodb.get_category(category_id)
-    if not cat:
-        return await cq.answer("This category no longer exists.", show_alert=True)
-
-    order_id = await client.mongodb.create_order(
-        cq.from_user.id, category_id, cat["price_cents"], method
-    )
-    instructions = await _payment_instructions(client, method)
-    label = PAYMENT_METHODS[method]["label"]
-
-    # If instructions contain a URL, add an Open link button
-    url_btn = None
-    for token in instructions.replace("\n", " ").split():
-        if token.startswith("http://") or token.startswith("https://"):
-            url_btn = token.strip("<>")
-            break
-
-    kb = []
-    if url_btn:
-        kb.append([InlineKeyboardButton("🔗 Open payment link", url=url_btn)])
-    kb.append([InlineKeyboardButton("« Payment methods", callback_data=f"cat_paymenu_{category_id}")])
-    kb.append([InlineKeyboardButton("🛒 Catalog", callback_data="open_catalog")])
-
-    await cq.answer()
-    await cq.message.reply_text(
-        f"<b>{label}</b>\n"
-        f"Pack: <b>{cat['name']}</b>\n"
-        f"Amount: <b>${cat['price_cents'] / 100:.2f}</b>\n"
-        f"Order ID: <code>{order_id}</code>\n\n"
-        f"{instructions}\n\n"
-        f"After paying, send <b>Order ID</b> + screenshot to admin.\n"
-        f"Admin: <code>/confirm {order_id}</code>\n"
-        f"→ you get the private channel join link.",
-        reply_markup=InlineKeyboardMarkup(kb),
-        disable_web_page_preview=True,
-    )
+    return await cq.answer("Digital goods use Telegram Stars only.", show_alert=True)
 
 
 @Client.on_message(filters.command("setpay") & filters.private)
 async def set_payment_details(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     if len(message.command) < 3:
@@ -611,7 +565,7 @@ async def set_payment_details(client: Client, message: Message):
 
 @Client.on_message(filters.command("payinfo") & filters.private)
 async def pay_info(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
     enabled = await _enabled_methods(client)
     if not enabled:
@@ -628,7 +582,7 @@ async def pay_info(client: Client, message: Message):
 
 @Client.on_message(filters.command("dbstats") & filters.private)
 async def db_stats_cmd(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     counts = await client.mongodb.db_storage_stats()
@@ -647,64 +601,17 @@ async def db_stats_cmd(client: Client, message: Message):
 
 @Client.on_message(filters.command("dbcleanup") & filters.private)
 async def db_cleanup_cmd(client: Client, message: Message):
-    """
-    Admin: safely remove junk from MongoDB without touching real data.
-    Deletes:
-      - abandoned 'pending' orders older than 24h (never paid)
-      - category_access rows whose access has already expired
-      - orders/category_access rows pointing at a category that was deleted
-    Leaves untouched: users, paid orders, active access, coupons, categories.
-    """
-    if not is_admin(message.from_user.id):
-        return await message.reply_text("Only admins can use this command.")
-
-    hours = 24
-    if len(message.command) > 1:
-        try:
-            hours = int(message.command[1])
-        except ValueError:
-            return await message.reply_text("<b>Usage:</b> /dbcleanup [pending_hours]\nDefault: 24")
-
-    counts = await client.mongodb.clean_junk_data(pending_order_hours=hours)
-    lines = ["<b>🧹 Junk cleanup done</b>\n"]
-    for k, v in counts.items():
-        lines.append(f"• {k.replace('_', ' ')}: <b>{v}</b>")
-    lines.append(f"\n(Pending orders older than {hours}h were removed. Paid orders and active access were kept.)")
-    await message.reply_text("\n".join(lines))
+    return await message.reply_text("Disabled to protect payment and access records. Use a database backup and controlled maintenance.")
 
 
 @Client.on_message(filters.command("cleardata") & filters.private)
 async def clear_shop_data_cmd(client: Client, message: Message):
-    """Admin: wipe test/sample shop data from Telegram.
-    /cleardata orders  — only payment orders
-    /cleardata access  — orders + unlocks + memberships + coupons
-    /cleardata all     — everything above + catalog packs
-    """
-    if not is_admin(message.from_user.id):
-        return await message.reply_text("Only admins can use this command.")
-
-    mode = (message.command[1] if len(message.command) > 1 else "").lower().strip()
-    if mode not in ("orders", "access", "all"):
-        return await message.reply_text(
-            "<b>Clear shop test data</b>\n\n"
-            "<code>/cleardata orders</code> — payment orders only\n"
-            "<code>/cleardata access</code> — orders + user unlocks + channel memberships + coupons\n"
-            "<code>/cleardata all</code> — all of the above + catalog packs\n\n"
-            "Does <b>not</b> delete users or payment method settings (/setpay)."
-        )
-
-    counts = await client.mongodb.clear_shop_data(mode)
-    lines = [f"✅ Cleared (<code>{mode}</code>):"]
-    for k, v in counts.items():
-        lines.append(f"• {k}: <b>{v}</b>")
-    if mode == "all":
-        lines.append("\nRecreate packs with /addcat and /linkchannel.")
-    await message.reply_text("\n".join(lines))
+    return await message.reply_text("Disabled to protect payment and access records. Use a database backup and controlled maintenance.")
 
 
 @Client.on_message(filters.command("confirm") & filters.private)
 async def confirm_order(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     parts = message.command[1:]
@@ -714,6 +621,10 @@ async def confirm_order(client: Client, message: Message):
     order = await client.mongodb.get_order(parts[0])
     if not order:
         return await message.reply_text("No order found with that ID.")
+    if order.get("method") == "stars":
+        return await message.reply_text("Stars orders are confirmed only by Telegram payment events.")
+    if message.from_user.id != client.owner:
+        return await message.reply_text("Owner only for legacy payment reconciliation.")
     if order["status"] != "pending":
         return await message.reply_text(f"Order is already '{order['status']}'.")
 
@@ -742,7 +653,7 @@ async def confirm_order(client: Client, message: Message):
 
 @Client.on_message(filters.command("pending") & filters.private)
 async def list_pending(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     orders = await client.mongodb.get_pending_orders()
@@ -763,7 +674,7 @@ async def list_pending(client: Client, message: Message):
 
 @Client.on_message(filters.command("checkstorage") & filters.private)
 async def check_storage(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     parts = message.command[1:]
@@ -789,7 +700,7 @@ async def check_storage(client: Client, message: Message):
 @Client.on_message(filters.command(["listvideos", "delvideo", "addcontent"]) & filters.private)
 async def legacy_item_cmds_removed(client: Client, message: Message):
     """Old per-file tools removed — content lives in the linked channel."""
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return
     await message.reply_text(
         "<b>Not used anymore.</b>\n\n"
@@ -813,7 +724,7 @@ async def search_shop(client: Client, message: Message):
         return await message.reply_text("No matching packs found.")
     buttons = []
     for cat in results:
-        price_text = "Free" if cat["price_cents"] == 0 else f"${cat['price_cents'] / 100:.2f}"
+        price_text = "Free" if cat["price_cents"] == 0 else f"⭐ {cat.get('price_stars') or cat['price_cents']}"
         buttons.append([InlineKeyboardButton(
             f"{cat['name']} — {price_text}", callback_data=f"cat_view_{cat['_id']}"
         )])
@@ -845,7 +756,7 @@ async def link_channel(client: Client, message: Message):
     """One-time setup: link a category to a private access channel.
     After this, paid/coupon/crypto-confirmed access automatically creates
     a single-use invite link, and expired access automatically kicks the user."""
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     parts = message.command[1:]
@@ -889,8 +800,11 @@ async def grant_channel_invite(client: Client, user_id: int, category_id) -> boo
         return False  # no channel linked — nothing to automate
 
     channel_id = cat["access_channel_id"]
-    days = int(cat.get("access_days") or 0)
-    expires_at = datetime.now() + timedelta(days=days) if days > 0 else None
+    access = await client.mongodb.category_access.find_one({"user_id":user_id,"category_id":str(category_id)})
+    if not access or not await client.mongodb.has_category_access(user_id, category_id):
+        return False
+    expires_at = access.get("expiry_date")
+    days = max(1, (expires_at - datetime.now()).days + 1) if expires_at else 0
 
     try:
         try:
@@ -901,8 +815,8 @@ async def grant_channel_invite(client: Client, user_id: int, category_id) -> boo
         link = await client.create_chat_invite_link(
             chat_id=channel_id,
             name=f"u{user_id}-c{category_id}"[:32],
-            member_limit=1,
-            expire_date=expires_at
+            creates_join_request=True,
+            expire_date=datetime.now() + timedelta(minutes=30)
         )
     except RPCError as e:
         client.LOGGER(__name__, client.name).warning(f"Invite link creation failed: {e}")
@@ -916,6 +830,7 @@ async def grant_channel_invite(client: Client, user_id: int, category_id) -> boo
             pass
         return False
 
+    await client.mongodb.db["business_invites"].update_one({"_id":link.invite_link},{"$set":{"user_id":user_id,"category_id":str(category_id),"channel_id":channel_id,"expires_at":datetime.now()+timedelta(minutes=30)}},upsert=True)
     await client.mongodb.save_channel_membership(user_id, category_id, channel_id, link.invite_link, expires_at)
 
     days_label = "lifetime" if days == 0 else f"{days} days"
@@ -923,7 +838,7 @@ async def grant_channel_invite(client: Client, user_id: int, category_id) -> boo
         await client.send_message(
             user_id,
             f"✅ <b>Access granted: {cat['name']}</b>\nDuration: {days_label}\n\n"
-            f"Join your private channel now (single-use link):\n{link.invite_link}",
+            f"Join your private channel now (personal join-request link, valid 30 minutes):\n{link.invite_link}",
             disable_web_page_preview=True
         )
     except Exception:
@@ -938,7 +853,12 @@ async def kick_expired_channel_members(client: Client) -> int:
     kicked = 0
     for row in rows:
         user_id = int(row["user_id"])
-        if is_admin(user_id):
+        if user_id in client.admins:
+            continue
+        if await client.mongodb.has_category_access(user_id, row["category_id"]):
+            continue
+        other = await client.mongodb.categories.find({"access_channel_id":row["channel_id"]}).to_list(length=None)
+        if any([await client.mongodb.has_category_access(user_id,str(c["_id"])) for c in other]):
             continue
         try:
             from hydrogram.errors import UserNotParticipant
@@ -982,7 +902,7 @@ async def list_commands(client: Client, message: Message):
         "/redeem CODE — coupon\n"
         "/profile — your profile\n"
     )
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text(user)
 
     text = user + (

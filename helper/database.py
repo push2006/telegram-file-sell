@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 import motor.motor_asyncio
 from datetime import datetime, timedelta
 
@@ -180,7 +181,7 @@ class MongoDB:
     async def get_shortner_status(self) -> bool:
         """Get shortner on/off status"""
         settings = await self.get_shortner_settings()
-        return settings.get('enabled', True)  # Default is enabled
+        return settings.get('enabled', False)  # Default is enabled
 
     async def set_shortner_status(self, enabled: bool):
         """Set shortner on/off status"""
@@ -642,9 +643,7 @@ class MongoDB:
 
     async def update_bot_setting(self, key: str, value):
         """Update a single bot setting"""
-        current_data = await self.get_bot_settings()
-        current_data[key] = value
-        await self.set_bot_settings(current_data)
+        await self.user_data.update_one({"_id":"bot_settings"}, {"$set": {f"settings.{key}":value}}, upsert=True)
 
     async def get_bot_setting(self, key: str, default=None):
         """Get a single bot setting with default fallback"""
@@ -668,9 +667,11 @@ class MongoDB:
 
     async def update_message_setting(self, key: str, value: str):
         """Update a single message setting"""
-        current_data = await self.get_messages_settings()
-        current_data[key] = value
-        await self.set_messages_settings(current_data)
+        await self.user_data.update_one(
+            {"_id": "messages_settings"},
+            {"$set": {f"messages.{key}": value}},
+            upsert=True
+        )
 
     async def get_message_setting(self, key: str, default: str = ""):
         """Get a single message setting with default fallback"""
@@ -761,7 +762,7 @@ class MongoDB:
 
     async def get_category(self, category_id) -> dict:
         from bson import ObjectId
-        return await self.categories.find_one({"_id": ObjectId(category_id)})
+        return await self.categories.find_one({"_id": ObjectId(category_id)}) if ObjectId.is_valid(category_id) else None
 
     async def get_category_by_name(self, name: str) -> dict:
         return await self.categories.find_one({"name": name})
@@ -863,7 +864,7 @@ class MongoDB:
 
     async def get_order(self, order_id: str) -> dict:
         from bson import ObjectId
-        return await self.orders.find_one({"_id": ObjectId(order_id)})
+        return await self.orders.find_one({"_id": ObjectId(order_id)}) if ObjectId.is_valid(order_id) else None
 
     async def get_pending_orders(self) -> list:
         return await self.orders.find({"status": "pending"}).to_list(length=None)
@@ -1029,7 +1030,7 @@ class MongoDB:
         )
 
     async def search_categories(self, keyword: str) -> list:
-        cursor = self.categories.find({"name": {"$regex": keyword, "$options": "i"}, "active": True})
+        cursor = self.categories.find({"name": {"$regex": __import__("re").escape(keyword), "$options": "i"}, "active": True})
         return await cursor.to_list(length=None)
 
     async def get_user_unlocked_categories(self, user_id: int) -> list:

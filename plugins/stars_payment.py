@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 """
 Telegram Stars payments for the shop plugin.
 
@@ -49,7 +50,7 @@ PAYMENT_METHODS["stars"] = {"label": "⭐ Pay with Telegram Stars"}
 
 # in-memory de-dup so a retried/duplicate successful_payment update
 # (Telegram occasionally redelivers updates) can't double-grant access
-_processed_charges: set[str] = set()
+
 
 
 def _category_star_price(cat: dict) -> int:
@@ -64,7 +65,7 @@ def _category_star_price(cat: dict) -> int:
 
 @Client.on_message(filters.command("setstarprice") & filters.private)
 async def set_star_price(client: Client, message: Message):
-    if not is_admin(message.from_user.id):
+    if not is_admin(message.from_user.id, client):
         return await message.reply_text("Only admins can use this command.")
 
     usage = "<b>Usage:</b> /setstarprice CATEGORY_ID STARS\n\n<b>Example:</b> /setstarprice 66f2... 150"
@@ -91,113 +92,97 @@ async def set_star_price(client: Client, message: Message):
 
 
 @Client.on_callback_query(filters.regex(r"^cat_buy_stars_"))
-async def buy_with_stars(client: Client, cq: CallbackQuery):
-    category_id = cq.data.split("cat_buy_stars_", 1)[1]
-    cat = await client.mongodb.get_category(category_id)
-    if not cat:
-        return await cq.answer("This category no longer exists.", show_alert=True)
-
-    stars = _category_star_price(cat)
-    if stars <= 0:
-        return await cq.answer(
-            "Admin hasn't set a Stars price for this category yet.", show_alert=True
-        )
-
-    if await client.mongodb.has_category_access(cq.from_user.id, category_id):
-        return await cq.answer("You already have access to this category.", show_alert=True)
-
-    order_id = await client.mongodb.create_order(
-        cq.from_user.id, category_id, stars, "stars", status="pending"
-    )
-
-    peer = await client.resolve_peer(cq.from_user.id)
-    invoice = raw.types.Invoice(currency=STARS_CURRENCY, prices=[
-        raw.types.LabeledPrice(label=cat["name"], amount=stars)
-    ])
-    media = raw.types.InputMediaInvoice(
-        title=cat["name"][:32],
-        description=f"Access to '{cat['name']}' for "
-                     f"{'lifetime' if not cat.get('access_days') else str(cat['access_days']) + ' days'}.",
-        invoice=invoice,
-        payload=order_id.encode(),
-        provider_data=raw.types.DataJSON(data="{}"),
-    )
-
+async def buy_with_stars(client, cq):
+    uid=cq.from_user.id
+    category_id=cq.data.split("cat_buy_stars_",1)[1]
+    if await client.mongodb.is_banned(uid): return await cq.answer("Access restricted.",show_alert=True)
+    cat=await client.mongodb.get_category(category_id)
+    if not cat or not cat.get('active') or not cat.get('access_channel_id'):
+        return await cq.answer("Listing unavailable.",show_alert=True)
+    stars=_category_star_price(cat)
+    if not 1<=stars<=100000: return await cq.answer("Invalid Stars price.",show_alert=True)
+    if await client.mongodb.has_category_access(uid,category_id): return await cq.answer("You already have access.",show_alert=True)
+    seller=cat.get('seller_id')
+    from plugins.business import approved
+    if seller and (seller==uid or not await approved(client,seller,'seller')):
+        return await cq.answer("Listing unavailable for this account.",show_alert=True)
+    from helper.business_rules import split_stars
+    rates=await client.mongodb.get_bot_setting('business_rates',{'platform':15,'affiliate':0})
+    ref=await client.mongodb.db.business_referrals.find_one({'_id':uid})
+    affiliate=ref.get('affiliate_id') if ref else None
+    if affiliate in (uid,seller) or not affiliate or not await approved(client,affiliate,'affiliate'): affiliate=None
+    allocation=split_stars(stars,int(rates['platform']) if seller else 100,int(rates['affiliate']) if affiliate and seller else 0)
+    if not seller: affiliate=None
+    from datetime import datetime
+    row=await client.mongodb.orders.insert_one({'user_id':uid,'category_id':category_id,'method':'stars','amount_cents':stars,'status':'pending','created_at':datetime.utcnow(),'access_days':int(cat.get('access_days') or 0),'seller_id':seller,'affiliate_id':affiliate,'fulfilled':False,**allocation})
+    order_id=str(row.inserted_id)
     try:
-        await client.invoke(
-            raw.functions.messages.SendMedia(
-                peer=peer,
-                media=media,
-                message="",
-                random_id=random.randrange(-(2 ** 63), 2 ** 63 - 1),
-            )
-        )
-        await cq.answer("Invoice sent — check the chat to pay.")
+        peer=await client.resolve_peer(uid)
+        invoice=raw.types.Invoice(currency='XTR',prices=[raw.types.LabeledPrice(label=cat['name'][:32],amount=stars)])
+        media=raw.types.InputMediaInvoice(title=cat['name'][:32],description='Private channel access. See /paysupport for assistance.',invoice=invoice,payload=order_id.encode(),provider_data=raw.types.DataJSON(data='{}'))
+        await client.invoke(raw.functions.messages.SendMedia(peer=peer,media=media,message='',random_id=random.randrange(-(2**63),2**63-1)))
+        await cq.answer('Invoice sent.')
     except Exception as e:
-        client.LOGGER(__name__, client.name).warning(f"stars invoice failed: {e}")
-        await cq.answer("Could not create the Stars invoice. Try again later.", show_alert=True)
+        client.LOGGER(__name__,client.name).warning('Invoice failed: %s',type(e).__name__)
+        await cq.answer('Could not send invoice. Check /purchases.',show_alert=True)
+
+
+async def fulfill_order(client, order):
+    if order.get('fulfilled') or order.get('status')!='paid': return
+    cat=await client.mongodb.get_category(order['category_id'])
+    if not cat: return
+    from datetime import timedelta
+    days=int(order.get('access_days',cat.get('access_days') or 0))
+    expiry=order['paid_at']+timedelta(days=days) if days else None
+    # Fixed payment timestamp, no extension on replay; preserve lifetime/longer grants.
+    await client.mongodb.category_access.update_one({'user_id':order['user_id'],'category_id':order['category_id']},[{ '$set':{'user_id':order['user_id'],'category_id':order['category_id'],'granted_at':{'$ifNull':['$granted_at',order['paid_at']]},'expiry_date':{'$cond':[{'$or':[{'$eq':[{'$type':'$expiry_date'},'null']}, {'$eq':[expiry,None]}]},None,{'$max':['$expiry_date',expiry]}]}}}],upsert=True)
+    # Fulfillment means access recorded, not successful delivery. /myvideos can recover link.
+    result=await client.mongodb.orders.update_one({'_id':order['_id'],'fulfilled':False,'status':'paid'},{'$set':{'fulfilled':True}})
+    if result.modified_count:
+        try:
+            from plugins.shop import grant_channel_invite
+            await client.send_message(order['user_id'],'Payment recorded. Use /myvideos to recover access.')
+            await grant_channel_invite(client,order['user_id'],order['category_id'])
+        except Exception: pass
 
 
 @Client.on_raw_update()
-async def stars_raw_handler(client: Client, update, users, chats):
-    # Step 3: approve the pre-checkout query so Telegram actually charges the user.
-    if isinstance(update, raw.types.UpdateBotPrecheckoutQuery):
+async def stars_raw_handler(client, update, users, chats):
+    from helper.business_rules import matches_payment
+    from datetime import datetime
+    from bson import ObjectId
+    if isinstance(update,raw.types.UpdateBotPrecheckoutQuery):
+        ok=False
         try:
-            await client.invoke(
-                raw.functions.messages.SetBotPrecheckoutResults(
-                    query_id=update.query_id, success=True
-                )
-            )
-        except Exception as e:
-            client.LOGGER(__name__, client.name).warning(f"precheckout answer failed: {e}")
+            order=await client.mongodb.get_order(update.payload.decode())
+            if matches_payment(order,update.user_id,update.total_amount,update.currency) and not await client.mongodb.is_banned(update.user_id):
+                cat=await client.mongodb.get_category(order['category_id'])
+                if cat and cat.get('active') and cat.get('access_channel_id') and not await client.mongodb.has_category_access(update.user_id,order['category_id']):
+                    result=await client.mongodb.orders.update_one({'_id':order['_id'],'$or':[{'status':'pending'},{'status':'checkout','checkout_id':str(update.query_id)}]},{'$set':{'status':'checkout','checkout_id':str(update.query_id)}})
+                    ok=bool(result.matched_count)
+        except Exception: pass
+        try:
+            kw={} if ok else {'error':'Order unavailable. Open the catalog and create a new invoice.'}
+            await client.invoke(raw.functions.messages.SetBotPrecheckoutResults(query_id=update.query_id,success=ok,**kw))
+        except Exception as e: client.LOGGER(__name__,client.name).warning('Checkout response failed: %s',type(e).__name__)
         return
-
-    # Step 4: the money has actually landed — grant access.
-    if isinstance(update, raw.types.UpdateNewMessage):
-        msg = update.message
-        action = getattr(msg, "action", None)
-        if not isinstance(action, raw.types.MessageActionPaymentSentMe):
+    if not isinstance(update,raw.types.UpdateNewMessage): return
+    msg=update.message
+    action=getattr(msg,'action',None)
+    if not isinstance(action,raw.types.MessageActionPaymentSentMe): return
+    try:
+        order=await client.mongodb.get_order(action.payload.decode())
+        uid=getattr(msg.peer_id,'user_id',None)
+        charge=getattr(action.charge,'id',None)
+        if not charge or not matches_payment(order,uid,action.total_amount,action.currency):
+            client.LOGGER(__name__,client.name).warning('Unmatched payment; owner reconciliation required.')
             return
-
-        order_id = action.payload.decode(errors="ignore")
-        charge_id = getattr(action.charge, "id", None) or f"{order_id}:{action.total_amount}"
-        if charge_id in _processed_charges:
-            return
-        _processed_charges.add(charge_id)
-
-        order = await client.mongodb.get_order(order_id)
-        if order:
-            await client.mongodb.mark_order_paid(order_id, status="paid")
-
-        user_id = getattr(msg.peer_id, "user_id", None)
-        if not order or not user_id:
-            client.LOGGER(__name__, client.name).warning(
-                f"stars payment received but order/user not resolved (payload={order_id!r})"
-            )
-            return
-
-        category_id = order["category_id"]
-        cat = await client.mongodb.get_category(category_id)
-        if not cat:
-            return
-
-        expiry = None
-        days = int(cat.get("access_days") or 0)
-        if days > 0:
-            from datetime import datetime, timedelta
-            expiry = datetime.now() + timedelta(days=days)
-
-        await client.mongodb.grant_category_access(user_id, category_id, expiry)
-
-        try:
-            from plugins.shop import grant_channel_invite
-            await client.send_message(user_id, f"✅ Payment received — ⭐ {action.total_amount} Stars.")
-            ok = await grant_channel_invite(client, user_id, category_id)
-            if not ok:
-                await client.send_message(
-                    user_id,
-                    "Payment confirmed, but the join link couldn't be created yet. "
-                    "An admin needs to run /linkchannel for this category.",
-                )
-        except Exception as e:
-            client.LOGGER(__name__, client.name).warning(f"post-payment notify failed: {e}")
+        # Persist charge, and prevent one invoice from being counted twice.
+        await client.mongodb.orders.update_one({'_id':order['_id'],'status':{'$in':['pending','checkout']},'charge_id':{'$exists':False}},{'$set':{'status':'paid','paid_at':datetime.utcnow(),'charge_id':charge,'fulfilled':False}})
+        saved=await client.mongodb.orders.find_one({'_id':order['_id']})
+        if saved.get('charge_id')==charge:
+            await fulfill_order(client,saved)
+        else:
+            await client.mongodb.db.business_payment_exceptions.update_one({'_id':charge},{'$setOnInsert':{'order_id':str(order['_id']),'user_id':uid,'amount':action.total_amount,'at':datetime.utcnow()}},upsert=True)
+            client.LOGGER(__name__,client.name).warning('Duplicate invoice charge; manual reconciliation required.')
+    except Exception as e: client.LOGGER(__name__,client.name).warning('Payment processing failed: %s',type(e).__name__)

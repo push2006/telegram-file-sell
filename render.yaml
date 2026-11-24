@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: push2006-business
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: TOKEN
+        sync: false
+      - key: API_ID
+        sync: false
+      - key: API_HASH
+        sync: false
+      - key: OWNER_ID
+        sync: false
+      - key: DB_URI
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_CHANNEL
+        sync: false
+      - key: ENABLE_EXPIRY
+        value: '0'

@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 import asyncio
 from hydrogram import filters, Client
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
@@ -6,7 +7,7 @@ from helper.helper_func import encode
 
 #===============================================================#
 
-@Client.on_message(filters.private & ~filters.command(['start', 'shortner', 'users', 'broadcast', 'batch', 'genlink', 'stats', 'pbroadcast', 'db', 'adddb', 'add_db', 'removedb', 'rm_db', 'ban', 'unban', 'addpremium', 'delpremium', 'premiumusers', 'request', 'profile', 'shop', 'catalog', 'redeem', 'search', 'myvideos', 'addcat', 'setprice', 'addcontent', 'listvideos', 'delvideo', 'checkstorage', 'createcoupon', 'pending', 'confirm', 'linkchannel', 'setpay', 'payinfo', 'cleardata', 'commands', 'adminhelp', 'shophelp', 'listcat', 'delcat', 'dbstats', 'dbcleanup', 'setstarprice']))
+@Client.on_message(filters.private & ~filters.regex(r"^/") & (filters.document | filters.video | filters.photo | filters.audio | filters.animation | filters.voice))
 async def channel_post(client: Client, message: Message):
     # Don't treat Catalog / Help keyboard taps as a file to store
     txt = (message.text or "").strip()
@@ -17,6 +18,8 @@ async def channel_post(client: Client, message: Message):
         return
     if message.from_user.id not in client.admins:
         return await message.reply(client.reply_text)
+    if not client.db:
+        return await message.reply_text("Configure a storage channel with /adddb first.")
     reply_text = await message.reply_text("Please Wait...!", quote = True)
     try:
         post_message = await message.copy(chat_id = client.db, disable_notification=True)

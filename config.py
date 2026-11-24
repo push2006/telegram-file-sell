@@ -25,63 +25,36 @@ def _load_env_file(path=".env"):
 
 _load_env_file()
 
-# Bot Configuration
-LOG_FILE_NAME = "bot.log"
-PORT = '5010'
-OWNER_ID = 8878090380
-
+# Copyright push2006 for modifications. See LICENSE.
+PORT = int(os.environ.get("PORT", "10000"))
+OWNER_ID = int(os.environ["OWNER_ID"])
 MSG_EFFECT = 5046509860389126442
-
-# Shortener config — set via env vars so secrets aren't hardcoded in git.
-# Defaults below match the linkshort.in account currently in use;
-# override SHORT_URL / SHORT_API / SHORT_TUT in your .env / Render env
-# vars if you switch shortener providers or rotate the API token.
-SHORT_URL = os.environ.get("SHORT_URL", "linkshort.in")
-SHORT_API = os.environ.get("SHORT_API", "25d59129cec3f18f38721362ad555127c22efcf9")
+SHORT_URL = os.environ.get("SHORT_URL", "")
+SHORT_API = os.environ.get("SHORT_API", "")
 SHORT_TUT = os.environ.get("SHORT_TUT", "")
-
-# Bot Configuration
-SESSION = os.environ.get("SESSION", "YatoFileStoreBot")
+SESSION = "push2006"
 TOKEN = os.environ["TOKEN"]
-API_ID = os.environ["API_ID"]
+API_ID = int(os.environ["API_ID"])
 API_HASH = os.environ["API_HASH"]
 WORKERS = int(os.environ.get("WORKERS", "5"))
-# Auto Mongo junk cleanup interval (hours). Default 60.
-AUTO_CLEAN_HOURS = int(os.environ.get("AUTO_CLEAN_HOURS", "60"))
-# Pending orders older than this many hours are deleted on each cleanup.
-AUTO_CLEAN_PENDING_HOURS = int(os.environ.get("AUTO_CLEAN_PENDING_HOURS", "60"))
-
+AUTO_CLEAN_HOURS = 60
+AUTO_CLEAN_PENDING_HOURS = 60
 DB_URI = os.environ["DB_URI"]
-DB_NAME = os.environ.get("DB_NAME", "yato")
-
-
-FSUBS = [[-1003891702450, True, 10]] # Force Subscription Channels [channel_id, request_enabled, timer_in_minutes]
-# Database Channel (Primary)
-DB_CHANNEL = int(os.environ.get("DB_CHANNEL", "-1003891702450"))  # file-store channel; catalog uses /linkchannel 
-# Multiple Database Channels (can be set via bot settings)
-DB_CHANNELS = {
- "-1003891702450": {"name": "Primary DB", "is_primary": True, "is_active": True},
-#     "": {"name": "Secondary DB", "is_primary": False, "is_active": True}
- }
-# Auto Delete Timer (seconds)
+DB_NAME = os.environ["DB_NAME"]
+FSUBS = []
+DB_CHANNEL = int(os.environ.get("DB_CHANNEL", "0"))
+DB_CHANNELS = {}
 AUTO_DEL = 300
-# Admin IDs
-ADMINS = [8878090380]
-# Bot Settings
+ADMINS = list(dict.fromkeys([OWNER_ID] + [int(x) for x in os.environ.get("ADMINS", "").replace(",", " ").split()]))
 DISABLE_BTN = True
 PROTECT = True
-
-# Messages Configuration
 MESSAGES = {
-    "START": "<b>›› ʜᴇʏ!!, {first} ~ <blockquote>ʟᴏᴠᴇ ᴘᴏʀɴʜᴡᴀ? ɪ ᴀᴍ ᴍᴀᴅᴇ ᴛᴏ ʜᴇʟᴘ ʏᴏᴜ ᴛᴏ ғɪɴᴅ ᴡʜᴀᴛ ʏᴏᴜ aʀᴇ ʟᴏᴏᴋɪɴɢ ꜰᴏʀ.</blockquote></b>",
-    "FSUB": "<b><blockquote>›› ʜᴇʏ ×</blockquote>\n  ʏᴏᴜʀ ғɪʟᴇ ɪs ʀᴇᴀᴅʏ ‼️ ʟᴏᴏᴋs ʟɪᴋᴇ ʏᴏᴜ ʜᴀᴠᴇɴ'ᴛ sᴜʙsᴄʀɪʙᴇᴅ ᴛᴏ ᴏᴜʀ ᴄʜᴀɴɴᴇʟs ʏᴇᴛ, sᴜʙsᴄʀɪʙᴇ ɴᴏᴡ ᴛᴏ ɢᴇᴛ ʏᴏᴜʀ ғɪʟᴇs</b>",
-    "ABOUT": "<b>›› ғᴏʀ ᴍᴏʀᴇ: @Nova_Flix \n <blockquote expandable>›› ᴜᴘᴅᴀᴛᴇs ᴄʜᴀɴɴᴇʟ: <a href='https://t.me/codeflix_bots'>Cʟɪᴄᴋ ʜᴇʀᴇ</a> \n›› ᴏᴡɴᴇʀ: @ProYato\n›› ʟᴀɴɢᴜᴀɢᴇ: <a href='https://docs.python.org/3/'>Pʏᴛʜᴏɴ 3</a> \n›› ʟɪʙʀᴀʀʏ: <a href='https://docs.pyrogram.org/'>Pʏʀᴏɢʀᴀᴍ ᴠ2</a> \n›› ᴅᴀᴛᴀʙᴀsᴇ: <a href='https://www.mongodb.com/docs/'>Mᴏɴɢᴏ ᴅʙ</a> \n›› ᴅᴇᴠᴇʟᴏᴘᴇʀ: @cosmic_freak</b></blockquote>",
-    "REPLY": "<b>For More Join - @aileh_bot</b>",
-    "SHORT_MSG": "<b>📊 ʜᴇʏ {first}, \n\n‼️ ɢᴇᴛ ᴀʟʟ ꜰɪʟᴇꜱ ɪɴ ᴀ ꜱɪɴɢʟᴇ ʟɪɴᴋ ‼️\n\n ⌯ ʏᴏᴜʀ ʟɪɴᴋ ɪꜱ ʀᴇᴀᴅʏ, ᴋɪɴᴅʟʏ ᴄʟɪᴄᴋ ᴏɴ ᴏᴘᴇɴ ʟɪɴᴋ ʙᴜᴛᴛᴏɴ..</b>",
-    "START_PHOTO": "https://graph.org/file/510affa3d4b6c911c12e3.jpg",
-    "FSUB_PHOTO": "https://telegra.ph/file/7a16ef7abae23bd238c82-b8fbdcb05422d71974.jpg",
-    "SHORT_PIC": "https://telegra.ph/file/7a16ef7abae23bd238c82-b8fbdcb05422d71974.jpg",
-    "SHORT": "https://telegra.ph/file/8aaf4df8c138c6685dcee-05d3b183d4978ec347.jpg"
+    "START": "Welcome, {first}. Browse the catalog or use /business.",
+    "FSUB": "Please join the required channels to continue.",
+    "ABOUT": "push2006 • Digital marketplace",
+    "REPLY": "Use /start or /business to get started.",
+    "SHORT_MSG": "Your link is ready.",
+    "START_PHOTO": "", "FSUB_PHOTO": "", "SHORT_PIC": "", "SHORT": ""
 }
 
 def LOGGER(name: str, client_name: str) -> logging.Logger:

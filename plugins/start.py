@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 from helper.helper_func import *
 from hydrogram import Client, filters
 from hydrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
@@ -14,6 +15,7 @@ def start_inline_kb(is_admin: bool):
     """Catalog is the main action — never hide behind /shop."""
     rows = [
         [InlineKeyboardButton("🛒 Open Catalog", callback_data="open_catalog")],
+        [InlineKeyboardButton("Business dashboard", callback_data="biz_home")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton("⛩️ Settings", callback_data="settings")])
@@ -51,7 +53,13 @@ async def start_command(client: Client, message: Message):
         return await message.reply("**You have been banned from using this bot!**")
 
     text = message.text
+    if len(message.command) > 1 and message.command[1].startswith("ref_"):
+        from plugins.business import register_referral
+        await register_referral(client, user_id, message.command[1][4:])
+        text = "/start"
     if len(text) > 7:
+        if not client.db:
+            return await message.reply("Storage channel not configured.")
         try:
             original_payload = text.split(" ", 1)[1]
             base64_string = original_payload
@@ -88,7 +96,7 @@ async def start_command(client: Client, message: Message):
             else:
                 short_photo = client.messages.get("SHORT_PIC", "")
                 short_caption = client.messages.get("SHORT_MSG", "")
-                tutorial_link = getattr(client, 'tutorial_link', "https://t.me/How_to_Download_7x/26")
+                tutorial_link = getattr(client, 'tutorial_link', "")
 
                 buttons_row = [InlineKeyboardButton("• ᴏᴘᴇɴ ʟɪɴᴋ", url=short_link)]
                 if tutorial_link and str(tutorial_link).startswith(("http://", "https://")):
@@ -101,7 +109,7 @@ async def start_command(client: Client, message: Message):
                         caption=short_caption,
                         reply_markup=InlineKeyboardMarkup([
                             buttons_row,
-                            [InlineKeyboardButton(" • ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ •", url="https://t.me/Premium_Fliix/21")]
+                            [InlineKeyboardButton("Open Catalog", callback_data="open_catalog")]
                         ])
                     )
                     return  # short link sent successfully — prevent sending actual files
@@ -115,6 +123,8 @@ async def start_command(client: Client, message: Message):
         try:
             string = await decode(base64_string)
             argument = string.split("-")
+            if argument[0] != "get":
+                return await message.reply("Invalid link.")
             ids = []
             source_channel_id = None
 
@@ -125,8 +135,8 @@ async def start_command(client: Client, message: Message):
                 
                 # Try primary channel first
                 primary_multiplier = abs(client.db)
-                start_primary = int(encoded_start / primary_multiplier)
-                end_primary = int(encoded_end / primary_multiplier)
+                start_primary = encoded_start // primary_multiplier
+                end_primary = encoded_end // primary_multiplier
                 
                 # Check if the division results in clean integers (meaning this channel was used for encoding)
                 if encoded_start % primary_multiplier == 0 and encoded_end % primary_multiplier == 0:
@@ -140,8 +150,8 @@ async def start_command(client: Client, message: Message):
                     for channel_id_str in db_channels.keys():
                         channel_id = int(channel_id_str)
                         channel_multiplier = abs(channel_id)
-                        start_test = int(encoded_start / channel_multiplier)
-                        end_test = int(encoded_end / channel_multiplier)
+                        start_test = encoded_start // channel_multiplier
+                        end_test = encoded_end // channel_multiplier
                         
                         if encoded_start % channel_multiplier == 0 and encoded_end % channel_multiplier == 0:
                             source_channel_id = channel_id
@@ -156,6 +166,8 @@ async def start_command(client: Client, message: Message):
                         start = start_primary
                         end = end_primary
                 
+                if min(start,end)<1 or abs(end-start)>999:
+                    return await message.reply("Invalid or oversized batch link.")
                 ids = range(start, end + 1) if start <= end else list(range(start, end - 1, -1))
 
             elif len(argument) == 2:
@@ -240,7 +252,7 @@ async def start_command(client: Client, message: Message):
             return await temp_msg.edit("Couldn't find the files in the database.")
         await temp_msg.delete()
 
-        yugen_msgs = []
+        stored_messages = []
         for msg in messages:
             caption = (
                 client.messages.get('CAPTION', '').format(
@@ -257,7 +269,7 @@ async def start_command(client: Client, message: Message):
                     reply_markup=reply_markup,
                     protect_content=client.protect
                 )
-                yugen_msgs.append(copied_msg)
+                stored_messages.append(copied_msg)
             except FloodWait as e:
                 await asyncio.sleep(e.value)
                 copied_msg = await msg.copy(
@@ -266,7 +278,7 @@ async def start_command(client: Client, message: Message):
                     reply_markup=reply_markup,
                     protect_content=client.protect
                 )
-                yugen_msgs.append(copied_msg)
+                stored_messages.append(copied_msg)
             except Exception as e:
                 client.LOGGER(__name__, client.name).warning(f"Failed to send message: {e}")
                 pass
@@ -279,7 +291,7 @@ async def start_command(client: Client, message: Message):
             # Start batch auto delete notification - single notification for all files
             asyncio.create_task(batch_auto_del_notification(
                 bot_username=client.username,
-                messages=yugen_msgs,
+                messages=stored_messages,
                 delay_time=client.auto_del,
                 transfer_link=transfer_link,
                 chat_id=message.from_user.id,
@@ -349,9 +361,8 @@ async def request_command(client: Client, message: Message):
         return
 
     if not is_user_premium: 
-        BUTTON_URL = "https://t.me/hanime_arena/5"
         reply_markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💎 Upgrade to Premium", url=BUTTON_URL)]
+            [InlineKeyboardButton("Open Catalog", callback_data="open_catalog")]
         ])
         await message.reply(
             "❌ **You are not a premium user.**\nUpgrade to premium to access this feature.",
@@ -402,5 +413,5 @@ async def my_plan(client: Client, message: Message):
             "🔸 Plan: Free\n"
             "🔸 Request: Disabled\n\n"
             "🔓 Unlock Premium to get more benefits\n"
-            "Contact: @GetoPro"
+            "Use /ticket for assistance."
         )

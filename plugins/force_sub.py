@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 from hydrogram import Client, filters
 from hydrogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from helper.helper_func import is_bot_admin
@@ -35,6 +36,8 @@ __Use the appropriate button below to add or remove a force subscription channel
 
 @Client.on_callback_query(filters.regex('^add_fsub$'))
 async def add_fsub(client: Client, query: CallbackQuery):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     await query.answer()
     ask_channel_info = await client.ask(query.from_user.id, "Send channel id(negative integer value), request boolean(yes/no/true/false), timers(integer without decimal)(to enable it keep it greator than 0 otherwise the invite link will not have any timer to invalidate it) seperated by a space in the next 60 seconds!\n<blockquote expandable>Eg: `-10089479289 yes 5`\n\n__It means `-10089479289` is the force sub channel id, `yes` means to enable request it means the link will be request link and only after user sends request to the channel bot will work for that user even if you do not accept his request or user is not a member, `5` means timer in minutes aftetr 5 minutes the invite link will be expired.__</blockquote>", filters=filters.text, timeout=60)
     try:
@@ -82,6 +85,8 @@ async def add_fsub(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex('^rm_fsub$'))
 async def rm_fsub(client: Client, query: CallbackQuery):
+    if query.from_user.id not in client.admins:
+        return await query.answer("Admins only.", show_alert=True)
     await query.answer()
     ask_channel_info = await client.ask(query.from_user.id, "Send channel id(negative integer value) in the next 60 seconds!", filters=filters.text, timeout=60)
     try:

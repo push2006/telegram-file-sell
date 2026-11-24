@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 from hydrogram import Client
 from hydrogram.types import ChatJoinRequest, ChatMemberUpdated
 from hydrogram.enums import ChatMemberStatus
@@ -8,7 +9,21 @@ async def handle_join_request(client, join_request: ChatJoinRequest):
     user_id = join_request.from_user.id
     channel_id = join_request.chat.id
     
-    # Only process monitored fsub channels
+    # Marketplace personal invite links are distinct from legacy force-sub links.
+    from datetime import datetime
+    url=getattr(getattr(join_request,"invite_link",None),"invite_link",None)
+    if url:
+        invite=await client.mongodb.db.business_invites.find_one({"_id":url})
+        if invite:
+            allowed=(invite["user_id"]==user_id and invite["channel_id"]==channel_id and invite["expires_at"]>datetime.now() and not await client.mongodb.is_banned(user_id) and await client.mongodb.has_category_access(user_id,invite["category_id"]))
+            if allowed:
+                await client.approve_chat_join_request(channel_id,user_id)
+                try: await client.revoke_chat_invite_link(channel_id,url)
+                except Exception: pass
+                await client.mongodb.db.business_invites.update_one({"_id":url},{"$set":{"used":True,"expires_at":datetime.now()}})
+            else:
+                await client.decline_chat_join_request(channel_id,user_id)
+            return
     if channel_id not in client.fsub_dict:
         return
         

@@ -1,3 +1,4 @@
+# Modifications copyright push2006. Original notices and LICENSE retained.
 #SahilxCodes
 
 from hydrogram import Client, filters
@@ -121,7 +122,7 @@ async def remove_admin_command(client: Client, message: Message):
         await client.mongodb.remove_pro(user_id_to_remove)
         await message.reply_text(f"<b>User {user_name} - {user_id_to_remove} has been removed from pro users...!</b>")
         try:
-            await client.send_message(user_id_to_remove, "<b>You membership has been ended.\n\nTo renew the membership\nContact: @GetoPro.</b>")
+            await client.send_message(user_id_to_remove, "<b>You membership has been ended.\n\nTo renew the membership\nUse /ticket for assistance.</b>")
         except Exception as e:
             await message.reply_text(f"Failed to notify the user: {e}")
     else:
