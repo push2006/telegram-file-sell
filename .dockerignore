@@ -7,3 +7,5 @@ __pycache__/
 .gitignore
 .env
 bot.log
+*.log
+*.py[cod]
