@@ -937,7 +937,19 @@ async def kick_expired_channel_members(client: Client) -> int:
     rows = await client.mongodb.list_expired_memberships()
     kicked = 0
     for row in rows:
+        user_id = int(row["user_id"])
+        if is_admin(user_id):
+            continue
         try:
+            from hydrogram.errors import UserNotParticipant
+            try:
+                member = await client.get_chat_member(row["channel_id"], user_id)
+            except UserNotParticipant:
+                member = None
+            if member is not None and member.status.name.lower() in (
+                "administrator", "creator", "owner"
+            ):
+                continue
             await client.ban_chat_member(row["channel_id"], row["user_id"])
             try:
                 await client.unban_chat_member(row["channel_id"], row["user_id"])
@@ -1001,4 +1013,3 @@ async def list_commands(client: Client, message: Message):
         "• Render → running bot + env vars only (no files)\n"
     )
     await message.reply_text(text)
-
