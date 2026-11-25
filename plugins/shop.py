@@ -200,8 +200,8 @@ async def _send_catalog(client: Client, chat_id: int, edit_message: Message = No
     if not categories:
         msg = (
             "📭 <b>Catalog is empty</b>\n\n"
-            "Admin: <code>/addcat Name|cents|days</code>\n"
-            "then <code>/linkchannel ID -100CHANNEL_ID</code>"
+            "No products are available yet.\n"
+            "Use Main menu to return."
         )
         if edit_message:
             try:
@@ -302,7 +302,8 @@ async def view_category(client: Client, cq: CallbackQuery):
 @Client.on_callback_query(filters.regex(r"^cat_back$"))
 async def back_to_catalog(client: Client, cq: CallbackQuery):
     await cq.answer()
-    await _send_catalog(client, cq.from_user.id, edit_message=cq.message)
+    from plugins.easy_ui import browse
+    await browse(client, cq.from_user.id)
 
 
 @Client.on_callback_query(filters.regex(r"^cat_open_"))

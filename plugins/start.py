@@ -14,8 +14,8 @@ import asyncio
 def start_inline_kb(is_admin: bool):
     """Catalog is the main action — never hide behind /shop."""
     rows = [
-        [InlineKeyboardButton("🛒 Open Catalog", callback_data="open_catalog")],
-        [InlineKeyboardButton("Business dashboard", callback_data="biz_home")],
+        [InlineKeyboardButton("🛒 Open Catalog", callback_data="easy:catalog:0")],
+        [InlineKeyboardButton("Main menu", callback_data="easy:page:home")],
     ]
     if is_admin:
         rows.append([InlineKeyboardButton("⛩️ Settings", callback_data="settings")])
@@ -26,9 +26,11 @@ def start_inline_kb(is_admin: bool):
     return InlineKeyboardMarkup(rows)
 
 
-def start_reply_kb():
+def start_reply_kb(is_owner=False):
+    rows=[["🛒 Browse", "🔍 Search"], ["My purchases", "Account"], ["Seller account", "Support"], ["Main menu", "Resume form"], ["Cancel form"]]
+    if is_owner: rows[-1].append("Admin panel")
     return ReplyKeyboardMarkup(
-        [["🛒 Open Catalog"], ["Help"]],
+        rows,
         resize_keyboard=True,
         one_time_keyboard=False,
     )
@@ -299,7 +301,7 @@ async def start_command(client: Client, message: Message):
             ))
         return
 
-    # 9. Normal start — welcome + Open Catalog (no /shop needed)
+    # 9. Normal start — welcome + main menu
     else:
         buttons = start_inline_kb(user_id in client.admins)
         photo = client.messages.get("START_PHOTO", "")
@@ -315,7 +317,7 @@ async def start_command(client: Client, message: Message):
             start_caption = f"Welcome, {message.from_user.mention}"
         start_caption = (
             f"{start_caption or 'Welcome'}\n\n"
-            "🛒 Tap <b>Open Catalog</b> to browse packs.\n"
+            "🛒 Tap <b>Browse</b> or <b>Main menu</b> below.\n"
             "Pay → private channel join link."
         )
 
@@ -340,8 +342,8 @@ async def start_command(client: Client, message: Message):
         try:
             await client.send_message(
                 chat_id=message.chat.id,
-                text="⬇️ Or use the button below anytime",
-                reply_markup=start_reply_kb(),
+                text="Use the buttons below anytime.",
+                reply_markup=start_reply_kb(user_id == client.owner),
             )
         except Exception:
             pass
@@ -393,7 +395,7 @@ async def my_plan(client: Client, message: Message):
     is_admin = user_id in client.admins  # ✅ Fix here
 
     if is_admin or user_id == OWNER_ID:
-        await message.reply_text("🔹 You're my sensei! This command is only for users.")
+        await message.reply_text("Administrator account.")
         return
     
     is_user_premium = await client.mongodb.is_pro(user_id)
@@ -401,7 +403,6 @@ async def my_plan(client: Client, message: Message):
     if is_user_premium:
         await message.reply_text(
             "**👤 Profile Information:**\n\n"
-            "🔸 Ads: Disabled\n"
             "🔸 Plan: Premium\n"
             "🔸 Request: Enabled\n\n"
             "🌟 You're a Premium User!"
@@ -409,7 +410,6 @@ async def my_plan(client: Client, message: Message):
     else:
         await message.reply_text(
             "**👤 Profile Information:**\n\n"
-            "🔸 Ads: Enabled\n"
             "🔸 Plan: Free\n"
             "🔸 Request: Disabled\n\n"
             "🔓 Unlock Premium to get more benefits\n"

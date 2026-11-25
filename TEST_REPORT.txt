@@ -5,11 +5,35 @@ test_negative_and_zero (test_business_rules.Rules.test_negative_and_zero) ... ok
 test_one_star_rounding (test_business_rules.Rules.test_one_star_rounding) ... ok
 test_overallocated_commission (test_business_rules.Rules.test_overallocated_commission) ... ok
 test_payment_mismatch (test_business_rules.Rules.test_payment_mismatch) ... ok
+test_application_role (test_easy_forms.Forms.test_application_role) ... ok
+test_batch_invalid (test_easy_forms.Forms.test_batch_invalid) ... ok
+test_batch_valid (test_easy_forms.Forms.test_batch_valid) ... ok
+test_campaign (test_easy_forms.Forms.test_campaign) ... ok
+test_channel_links (test_easy_forms.Forms.test_channel_links) ... ok
+test_commission (test_easy_forms.Forms.test_commission) ... ok
+test_coupon_and_review (test_easy_forms.Forms.test_coupon_and_review) ... ok
+test_incomplete (test_easy_forms.Forms.test_incomplete) ... ok
+test_injection (test_easy_forms.Forms.test_injection) ... ok
+test_invalid_price_and_channel (test_easy_forms.Forms.test_invalid_price_and_channel) ... ok
+test_legacy_routes_resolve (test_easy_forms.Forms.test_legacy_routes_resolve) ... ok
+test_neutral_branding (test_easy_forms.Forms.test_neutral_branding) ... ok
+test_pagination (test_easy_forms.Forms.test_pagination) ... ok
+test_permanent_premium (test_easy_forms.Forms.test_permanent_premium) ... ok
+test_post_validation (test_easy_forms.Forms.test_post_validation) ... ok
+test_profile_limits (test_easy_forms.Forms.test_profile_limits) ... ok
+test_readable_labels (test_easy_forms.Forms.test_readable_labels) ... ok
+test_text_update (test_easy_forms.Forms.test_text_update) ... ok
+test_valid_product (test_easy_forms.Forms.test_valid_product) ... ok
+test_duplicate_confirmation_not_executed (test_easy_navigation.Navigation.test_duplicate_confirmation_not_executed) ... ok
+test_invalid_price_keeps_step (test_easy_navigation.Navigation.test_invalid_price_keeps_step) ... ok
+test_old_reply_does_not_change_form (test_easy_navigation.Navigation.test_old_reply_does_not_change_form) ... ok
+test_owner_action_blocked (test_easy_navigation.Navigation.test_owner_action_blocked) ... ok
+test_plain_chat_input (test_easy_navigation.Navigation.test_plain_chat_input) ... ok
+test_search_without_confirmation (test_easy_navigation.Navigation.test_search_without_confirmation) ... ok
 
 ----------------------------------------------------------------------
-Ran 7 tests in 0.000s
+Ran 32 tests in 0.150s
 
 OK
 
-All Python source files compiled successfully.
-Dependency installation: blocked by DNS/network access. Live integration: not tested.
+All Python source files compiled. 32 tests include mocked chat handlers, form validation, permission checks and business rules. Live Telegram, MongoDB and Render integrations were not run; Hydrogram/Motor/BSON are unavailable here. No new runtime dependency or environment variable.
